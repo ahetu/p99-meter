@@ -1,0 +1,59 @@
+---
+description: Critical invariants for tooltip rendering and window drag/resize. Read before modifying DamageMeter.tsx, App.tsx, or index.ts.
+globs: src/DamageMeter.tsx, src/App.tsx, src/index.ts, src/preload.ts
+alwaysApply: false
+---
+
+# Tooltip & Window Management — Critical Invariants
+
+## Window Architecture
+
+The meter runs as a **transparent, frameless, always-on-top Electron BrowserWindow**. Transparent pixels are click-through to EQ. The window is sized to fit only the meter panel; tooltips require temporarily expanding it.
+
+## Tooltip Expansion (index.ts)
+
+When a user hovers a bar, the renderer asks the main process to expand the window so the tooltip has room to render outside the meter panel.
+
+**Rules:**
+- Store `baseBounds` BEFORE expanding so collapse restores the exact original size/position
+- Expand downward to the display `workArea` bottom, clamped to screen edges
+- On collapse, restore from `baseBounds` (never subtract a fixed constant)
+- `collapseTooltipExpansion()` is called from multiple places: collapse IPC, `saveCurrentLayout()`, `repositionMeterToEQ()`, `start-resize`. All must work correctly.
+
+## Tooltip Rendering (DamageMeter.tsx)
+
+The tooltip is `position: fixed` rendered as a sibling of the meter panel div (inside a React Fragment), NOT inside the overflow-hidden meter panel.
+
+**Rules:**
+- Never use `maxHeight` or `overflowY: 'auto'` on the tooltip — this clips content and scroll conflicts with EQ
+- Direction logic: prefer whichever side (above/below bar) has more space
+- The tooltip uses `pointerEvents: 'none'`
+
+## Meter Stability (App.tsx)
+
+The App wraps DamageMeter in a div with `height: meterH`. This keeps the meter visually stable during tooltip expansion.
+
+**Rules:**
+- `meterH` updates ONLY during user-initiated resize (`resizing.current === true`)
+- Tooltip-triggered window resizes call `forceRender()` instead, which re-renders without changing meter height
+- Never update `meterH` from tooltip expand/collapse events
+
+## Drag (App.tsx + index.ts)
+
+Drag uses `mousedown` on title bar → track delta → send `move-window` IPC with `(screenX - clientX, screenY - clientY)` as absolute position.
+
+**Rules:**
+- `dragAnchor` stores initial `clientX/clientY` (NOT screenX/screenY)
+- `move-window` handler calls `mainWindow.setPosition(x, y)` with absolute coords
+- Must work in all directions (up, down, left, right)
+
+## Resize (App.tsx + index.ts)
+
+Resize uses the bottom-right grip → `start-resize` IPC → main process polls cursor position at 16ms intervals.
+
+**Rules:**
+- `resizeStart` stores initial cursor screenX/screenY and initial window w/h
+- New size = `initial + (currentCursor - initialCursor)`, clamped to minimums (200x100)
+- `collapseTooltipExpansion()` is called before starting resize
+- `stopResizePolling()` saves layout to disk
+- `resizing.current` flag distinguishes user resize from tooltip resize in the renderer

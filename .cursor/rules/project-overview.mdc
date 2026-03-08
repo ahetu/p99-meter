@@ -1,0 +1,37 @@
+---
+description: p99-meter project overview and critical invariants. READ THIS FIRST before making any changes.
+alwaysApply: true
+---
+
+# p99-meter — Project Overview
+
+This is an **Electron overlay app** for EverQuest Project 1999. It parses combat logs in real-time and displays a floating damage meter overlay on top of the EQ game window.
+
+## Codebase Location
+
+The source code is at `Z:\Everquest P99\p99-meter\src\`.
+
+**CRITICAL**: Do NOT confuse this with `Z:\Everquest P99\p99-armory\` which is a separate Next.js web app. The damage meter is p99-meter, NOT p99-armory. Always verify you are editing files inside `p99-meter/src/`.
+
+## Architecture
+
+- **Electron main process**: `src/index.ts` — window management, IPC handlers, overlay controller, log watcher, layout persistence
+- **Preload bridge**: `src/preload.ts` — exposes `window.electronAPI` to renderer
+- **React renderer**: `src/App.tsx` → `src/DamageMeter.tsx` — UI components
+- **Combat tracking**: `src/useCombatTracker.ts` — fight state machine, entity stats
+- **Log parsing**: `src/logParser.ts` — regex-based EQ log line parsing
+- **Spell correlation**: `src/spellCorrelator.ts` — attributes spell damage to casters
+- **Class detection**: `src/eqClasses.ts` — spell/skill to class mapping
+- **NPC detection**: `src/constants.ts` — `isLikelyNPC()`, timing constants
+- **Pet data**: `src/petData.ts` — pet names and summon spells
+- **Spell database**: `src/spellDatabase.ts` — loads spells_us.txt
+- **Class icons**: `src/classIcons.tsx` — SVG class icons
+
+## Build & Run
+
+- Dev: `npm start` (webpack-dev-server with HMR)
+- Package: `npm run package` (outputs to `out/p99-meter-win32-x64/`)
+- Type check: `npx tsc --noEmit --skipLibCheck`
+- Tests: `npx vitest run`
+
+**After source changes, the app must be rebuilt** — the packaged exe does NOT auto-update.

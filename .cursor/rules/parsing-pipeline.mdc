@@ -1,0 +1,35 @@
+---
+description: Combat log parsing pipeline architecture and invariants. Read before modifying logParser, useCombatTracker, spellCorrelator, eqClasses, or constants.
+globs: src/logParser.ts, src/useCombatTracker.ts, src/spellCorrelator.ts, src/eqClasses.ts, src/constants.ts
+alwaysApply: false
+---
+
+# Parsing Pipeline — Architecture
+
+## Data Flow
+
+```
+LogWatcher (polls file) → parseLine() → CombatEvent[] → IPC → renderer
+  → useCombatTracker.processEvents() → per-fight entity stats
+    → spellCorrelator (attributes spell damage to casters)
+    → eqClasses (detects player classes from spells/skills)
+    → constants.isLikelyNPC() (distinguishes players from NPCs)
+```
+
+## Key Improvements (DO NOT REGRESS)
+
+These were implemented in a comprehensive 5-phase audit. Verify they remain after any changes:
+
+1. **logParser.ts**: `dot_tick` event type, `YOU_SLAIN_BY_RE`, `DOT_YOUR_RE`, `DOT_INCOMING_RE`, synced melee verb lists, ENRAGED pattern with `(.+?)` for multi-word names
+2. **useCombatTracker.ts**: `globalKnownMobs` persists across fights, `retroactivelyAssignPet()` merges all stat fields (dsDmg, dotDmg, misses, kills), combat timer cleanup on unmount, `overallStartId` reset
+3. **spellCorrelator.ts**: `isNonDamage` flag on casts, AoE reuse window (500ms), DoT expiry pruning (30s), DoT re-attribution, `consumedAt` timestamp tracking
+4. **eqClasses.ts**: `normalizeSpellKey()` for backtick/apostrophe consistency, expanded Ranger/Paladin/SK spell lists, `frenzy`/`slam` skill mappings
+5. **constants.ts**: `KNOWN_NAMED_NPCS` set (~30 boss names), integrated into `isLikelyNPC()`
+
+## Testing
+
+- `src/logParser.test.ts` — parsing regex coverage
+- `src/spellCorrelator.test.ts` — spell attribution
+- `src/eqClasses.test.ts` — class detection
+- `src/constants.test.ts` — NPC heuristics
+- Run: `npx vitest run`
