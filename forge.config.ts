@@ -60,6 +60,19 @@ const config: ForgeConfig = {
         }
       }
     },
+    postPackage: async (_config, result) => {
+      const outDir = result.outputPaths[0];
+      for (const file of ['Setup.bat', 'Launch EverQuest.bat']) {
+        const src = path.join(__dirname, file);
+        const dest = path.join(outDir, file);
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, dest);
+          console.log(`[forge hook] Copied ${file} into package`);
+        } else {
+          console.warn(`[forge hook] WARNING: ${file} not found at ${src}`);
+        }
+      }
+    },
   },
   makers: [
     new MakerSquirrel({
@@ -81,6 +94,14 @@ const config: ForgeConfig = {
             name: 'main_window',
             preload: {
               js: './src/preload.ts',
+            },
+          },
+          {
+            html: './src/tooltip.html',
+            js: './src/tooltipRenderer.tsx',
+            name: 'tooltip_window',
+            preload: {
+              js: './src/tooltipPreload.ts',
             },
           },
         ],

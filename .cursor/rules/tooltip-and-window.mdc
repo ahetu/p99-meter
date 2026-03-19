@@ -1,6 +1,6 @@
 ---
-description: Critical invariants for tooltip rendering and window drag/resize. Read before modifying DamageMeter.tsx, App.tsx, or index.ts.
-globs: src/DamageMeter.tsx, src/App.tsx, src/index.ts, src/preload.ts
+description: Critical invariants for tooltip rendering and window drag/resize. Read before modifying DamageMeter.tsx, App.tsx, index.ts, tooltipRenderer.tsx, or preload.ts.
+globs: src/DamageMeter.tsx, src/App.tsx, src/index.ts, src/preload.ts, src/tooltipRenderer.tsx, src/tooltipPreload.ts, src/TooltipContent.tsx
 alwaysApply: false
 ---
 
@@ -8,39 +8,51 @@ alwaysApply: false
 
 ## Window Architecture
 
-The meter runs as a **transparent, frameless, always-on-top Electron BrowserWindow**. Transparent pixels are click-through to EQ. The window is sized to fit only the meter panel; tooltips require temporarily expanding it.
+The meter runs as a **transparent, frameless, always-on-top Electron BrowserWindow**. Transparent pixels are click-through to EQ. The window is sized to fit ONLY the meter panel.
 
-## Tooltip Expansion (index.ts)
+Tooltips render in a **separate BrowserWindow** (`tooltipWindow`). This is the industry-standard Electron approach for content that extends beyond a window's bounds. NEVER try to resize the meter window for tooltips — this approach was tried 20+ times and failed every time due to race conditions between setBounds, React render, and coordinate systems.
 
-When a user hovers a bar, the renderer asks the main process to expand the window so the tooltip has room to render outside the meter panel.
+## Tooltip Architecture
+
+### Three-window setup:
+1. **mainWindow** — the meter panel (transparent, frameless, always-on-top)
+2. **tooltipWindow** — hover tooltips (transparent, frameless, always-on-top, focusable:false, setIgnoreMouseEvents:true)
+3. **trackingWindow** — 1x1 invisible window for electron-overlay-window EQ tracking
+
+### Tooltip window properties:
+- `transparent: true` — transparent pixels pass through to EQ
+- `focusable: false` — never steals focus from EQ
+- `setIgnoreMouseEvents(true)` — ALL mouse events pass through (tooltip is read-only)
+- `alwaysOnTop: true, 'screen-saver'` — stays above EQ like the meter
+- Loaded from a separate webpack entry point (`tooltip_window` in forge.config.ts)
+
+### Data flow:
+1. User hovers bar → DamageMeter calls `onTooltipShow(player, viewMode, barTop, barBottom)`
+2. App.tsx sends IPC `show-tooltip` with player data + bar viewport coords
+3. Main process calculates screen position using `mainWindow.getBounds() + barTop/barBottom`
+4. Main process sizes tooltip window to cover available space above or below bar
+5. Main process forwards data to tooltip window via `webContents.send('tooltip-data', ...)`
+6. Tooltip window's React app renders TooltipContent
+7. On mouse leave: IPC `hide-tooltip` → main process hides tooltip window
+
+### Positioning logic (index.ts):
+- Compare space above bar vs below bar (relative to display workArea)
+- If more space above: tooltip window spans from workArea.y to barScreenY, content anchored to bottom
+- If more space below: tooltip window spans from barScreenBottom to workArea bottom, content anchored to top
+- Tooltip window width matches meter width, same X position
+
+## Shared Components (TooltipContent.tsx)
+
+`TooltipContent`, `TipRow`, `AbilityRow`, `PetSection` live in `TooltipContent.tsx` and are imported by both `tooltipRenderer.tsx` (tooltip window) and `DamageMeter.tsx` (for `fmt` and `FONT_NUM` utilities).
 
 **Rules:**
-- Store `baseBounds` BEFORE expanding so collapse restores the exact original size/position
-- Expand downward to the display `workArea` bottom, clamped to screen edges
-- On collapse, restore from `baseBounds` (never subtract a fixed constant)
-- `collapseTooltipExpansion()` is called from multiple places: collapse IPC, `saveCurrentLayout()`, `repositionMeterToEQ()`, `start-resize`. All must work correctly.
-
-## Tooltip Rendering (DamageMeter.tsx)
-
-The tooltip is `position: fixed` rendered as a sibling of the meter panel div (inside a React Fragment), NOT inside the overflow-hidden meter panel.
-
-**Rules:**
-- Never use `maxHeight` or `overflowY: 'auto'` on the tooltip — this clips content and scroll conflicts with EQ
-- Direction logic: prefer whichever side (above/below bar) has more space
-- The tooltip uses `pointerEvents: 'none'`
-
-## Meter Stability (App.tsx)
-
-The App wraps DamageMeter in a div with `height: meterH`. This keeps the meter visually stable during tooltip expansion.
-
-**Rules:**
-- `meterH` updates ONLY during user-initiated resize (`resizing.current === true`)
-- Tooltip-triggered window resizes call `forceRender()` instead, which re-renders without changing meter height
-- Never update `meterH` from tooltip expand/collapse events
+- Never use `maxHeight` or `overflowY` on the tooltip — scroll conflicts with EQ
+- Never render tooltips inside the meter window — they MUST be in the tooltip window
+- The tooltip window is purely visual; all interaction (hover detection) stays in the meter window
 
 ## Drag (App.tsx + index.ts)
 
-Drag uses `mousedown` on title bar → track delta → send `move-window` IPC with `(screenX - clientX, screenY - clientY)` as absolute position.
+Drag uses `mousedown` on title bar → track delta → send `move-window` IPC with absolute position.
 
 **Rules:**
 - `dragAnchor` stores initial `clientX/clientY` (NOT screenX/screenY)
@@ -54,6 +66,5 @@ Resize uses the bottom-right grip → `start-resize` IPC → main process polls 
 **Rules:**
 - `resizeStart` stores initial cursor screenX/screenY and initial window w/h
 - New size = `initial + (currentCursor - initialCursor)`, clamped to minimums (200x100)
-- `collapseTooltipExpansion()` is called before starting resize
 - `stopResizePolling()` saves layout to disk
-- `resizing.current` flag distinguishes user resize from tooltip resize in the renderer
+- `resizing.current` flag in renderer tracks active resize state

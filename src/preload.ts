@@ -14,8 +14,8 @@ export interface ElectronAPI {
   startResize: (screenX: number, screenY: number) => void;
   stopResize: () => void;
   stopDragResize: () => void;
-  expandForTooltip: () => void;
-  collapseTooltip: () => void;
+  showTooltip: (data: { player: any; viewMode: string; barTop: number; barBottom: number }) => void;
+  hideTooltip: () => void;
 }
 
 function singleListener<T>(channel: string, cb: (data: T) => void) {
@@ -61,11 +61,11 @@ const api: ElectronAPI = {
   stopDragResize: () => {
     ipcRenderer.send('stop-drag-resize');
   },
-  expandForTooltip: () => {
-    ipcRenderer.send('expand-for-tooltip');
+  showTooltip: (data: { player: any; viewMode: string; barTop: number; barBottom: number }) => {
+    ipcRenderer.send('show-tooltip', data);
   },
-  collapseTooltip: () => {
-    ipcRenderer.send('collapse-tooltip');
+  hideTooltip: () => {
+    ipcRenderer.send('hide-tooltip');
   },
 };
 

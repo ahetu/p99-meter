@@ -14,7 +14,13 @@ function Icon({ children }: { children: React.ReactNode }) {
 function WarriorIcon({ color }: { color: string }) {
   return (
     <Icon>
-      <path d="M9,1 h2 v11 h3 v2 h-3 v4 h-2 v-4 h-3 v-2 h3z" fill={color} />
+      <path d="M10,0.5 L11.3,2 L11,10.5 L9,10.5 L8.7,2 Z" fill={color} />
+      <line x1="10" y1="1.5" x2="10" y2="10" stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />
+      <path d="M4,10.5 Q5,10 6,10.5 L14,10.5 Q15,10 16,10.5 L16,12.5 Q15,13 14,12.5 L6,12.5 Q5,13 4,12.5 Z" fill={color} />
+      <rect x="8.8" y="12.5" width="2.4" height="4" rx="0.4" fill={color} opacity="0.85" />
+      <line x1="8.8" y1="13.5" x2="11.2" y2="13.5" stroke="rgba(0,0,0,0.2)" strokeWidth="0.4" />
+      <line x1="8.8" y1="14.8" x2="11.2" y2="14.8" stroke="rgba(0,0,0,0.2)" strokeWidth="0.4" />
+      <circle cx="10" cy="17.8" r="1.3" fill={color} opacity="0.75" />
     </Icon>
   );
 }
@@ -22,9 +28,16 @@ function WarriorIcon({ color }: { color: string }) {
 function RogueIcon({ color }: { color: string }) {
   return (
     <Icon>
-      <path d="M10,1 L14.5,7 L10,9.5 L5.5,7 Z" fill={color} />
-      <rect x="4.5" y="9.5" width="11" height="2" rx="1" fill={color} />
-      <rect x="8" y="12" width="4" height="6" rx="1" fill={color} opacity="0.7" />
+      <g transform="rotate(-45, 10, 10)">
+        <path d="M10,0.5 Q12.5,5 12,10 L8,10 Q7.5,5 10,0.5 Z" fill={color} />
+        <line x1="10" y1="2" x2="10" y2="9.5" stroke="rgba(255,255,255,0.15)" strokeWidth="0.6" />
+        <path d="M5.5,10 L7.2,9.2 L8,10.2 L12,10.2 L12.8,9.2 L14.5,10 L12.8,10.8 L12,10.5 L8,10.5 L7.2,10.8 Z" fill={color} />
+        <rect x="8.8" y="10.5" width="2.4" height="5.5" rx="0.5" fill={color} opacity="0.85" />
+        <line x1="8.8" y1="11.7" x2="11.2" y2="11.7" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" />
+        <line x1="8.8" y1="13" x2="11.2" y2="13" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" />
+        <line x1="8.8" y1="14.3" x2="11.2" y2="14.3" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" />
+        <ellipse cx="10" cy="17" rx="1.8" ry="1.2" fill={color} opacity="0.75" />
+      </g>
     </Icon>
   );
 }
@@ -32,9 +45,14 @@ function RogueIcon({ color }: { color: string }) {
 function MonkIcon({ color }: { color: string }) {
   return (
     <Icon>
-      <rect x="5" y="7" width="11" height="9" rx="2.5" fill={color} />
+      <rect x="5" y="7" width="12" height="9" rx="2.5" fill={color} />
       <rect x="6" y="3" width="3.5" height="6" rx="1.5" fill={color} />
       <rect x="10.5" y="3" width="3.5" height="6" rx="1.5" fill={color} />
+      <line x1="9.8" y1="3.5" x2="9.8" y2="8" stroke="rgba(0,0,0,0.3)" strokeWidth="0.6" />
+      <path d="M6.5,4 Q7.8,2.8 9.2,4" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />
+      <path d="M11,4 Q12.3,2.8 13.6,4" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />
+      <ellipse cx="4.5" cy="11.5" rx="1.8" ry="2.8" fill={color} />
+      <path d="M4.5,8.7 Q3,9.5 3,11.5 Q3,13.5 4.5,14.3" fill="none" stroke="rgba(0,0,0,0.2)" strokeWidth="0.5" />
     </Icon>
   );
 }
@@ -93,7 +111,17 @@ function ClericIcon({ color }: { color: string }) {
 function DruidIcon({ color }: { color: string }) {
   return (
     <Icon>
-      <path d="M10,2 Q16,6 15,12 Q13,10 10,18 Q7,10 5,12 Q4,6 10,2 Z" fill={color} />
+      <g transform="rotate(-25, 10, 10)">
+        <path d="M10,1 C14,3.5 14.5,7.5 13.5,11 C12,15 10.3,17 10,17.5 C9.7,17 8,15 6.5,11 C5.5,7.5 6,3.5 10,1 Z" fill={color} />
+        <path d="M10,2 Q10.2,10 10,17" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="0.8" />
+        <path d="M10,5.5 Q12.5,4 13.5,3" fill="none" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" />
+        <path d="M10,5.5 Q7.5,4 6.5,3" fill="none" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" />
+        <path d="M10,9 Q12.5,7.5 14,7" fill="none" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" />
+        <path d="M10,9 Q7.5,7.5 6,7" fill="none" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" />
+        <path d="M10,12.5 Q11.5,11.5 12.5,11" fill="none" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" />
+        <path d="M10,12.5 Q8.5,11.5 7.5,11" fill="none" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" />
+        <line x1="10" y1="17.5" x2="10" y2="19.5" stroke={color} strokeWidth="1.3" strokeLinecap="round" />
+      </g>
     </Icon>
   );
 }
@@ -120,7 +148,10 @@ function WizardIcon({ color }: { color: string }) {
 function MagicianIcon({ color }: { color: string }) {
   return (
     <Icon>
-      <path d="M10,2 Q14,6 14,11 Q14,17 10,17 Q6,17 6,11 Q6,8 8,6 Q8.5,8 10,7 Q11.5,6 10,2 Z" fill={color} />
+      <path d="M10,1 Q14,5 14,10 Q14,17 10,18 Q6,17 6,10 Q6,7 8,5 Q8.5,7 10,6 Q11.5,5 10,1 Z" fill={color} />
+      <path d="M10,3 Q12,6 12,10" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.6" />
+      <path d="M8.5,8 Q9,10 10,11 Q11,10 11,8" fill="none" stroke="rgba(0,0,0,0.2)" strokeWidth="0.5" />
+      <circle cx="10" cy="14" r="1.2" fill="rgba(255,255,255,0.1)" />
     </Icon>
   );
 }
@@ -128,9 +159,12 @@ function MagicianIcon({ color }: { color: string }) {
 function NecromancerIcon({ color }: { color: string }) {
   return (
     <Icon>
-      <rect x="9" y="3" width="2" height="16" rx="0.5" fill={color} />
-      <path d="M3,3 Q3,9 9,9" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" />
-      <path d="M3,3 L6,1" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <line x1="14" y1="19" x2="8" y2="3" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <line x1="11" y1="15.5" x2="14" y2="15.5" stroke="rgba(0,0,0,0.2)" strokeWidth="0.5" />
+      <line x1="11.5" y1="12.5" x2="14.5" y2="12.5" stroke="rgba(0,0,0,0.2)" strokeWidth="0.5" />
+      <path d="M8,3 Q3,1.5 2,5 Q1.5,8 7,10" fill={color} />
+      <path d="M8,3 Q3,1.5 2,5" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />
+      <line x1="2" y1="5" x2="1" y2="3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
     </Icon>
   );
 }

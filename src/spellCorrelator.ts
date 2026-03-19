@@ -419,7 +419,27 @@ export class SpellCorrelator {
       }
     }
 
-    // ── 2. DoT Tick Detection ──
+    // ── 2. Landing Message + Cast Correlation (highest confidence) ──
+    // Cast matches take priority over heuristic DoT detection — a known
+    // spell cast is always more reliable than a timing-based guess.
+    const targetLower = target.toLowerCase();
+    const landing = this.pendingLandings.find(
+      l => l.target === targetLower && Math.abs(now - l.timestamp) <= LANDING_MATCH_WINDOW_MS
+    );
+
+    if (landing) {
+      const landingResult = this.attributeWithLanding(landing, target, amount, now, targetIsMob);
+      if (landingResult) {
+        this.pendingLandings = this.pendingLandings.filter(l => l !== landing);
+        return landingResult;
+      }
+    }
+
+    // ── 3. Spell Cast Correlation without landing ──
+    const castResult = this.attributeFromCasts(target, amount, now, targetIsMob);
+    if (castResult) return castResult;
+
+    // ── 4. DoT Tick Detection (heuristic — only for damage unclaimed by casts) ──
     // Prune stale trackers (no tick in 30s = 5 missed ticks, DoT likely expired)
     const DOT_EXPIRY_MS = 30_000;
     this.dotTrackers = this.dotTrackers.filter(d => now - d.lastTick < DOT_EXPIRY_MS);
@@ -441,29 +461,7 @@ export class SpellCorrelator {
       }
     }
 
-    // ── 3. Landing Message + Cast Correlation ──
-    // Check if a landing message appeared at the same timestamp for this target.
-    // Landing messages tell us WHICH spell hit, enabling precise cast matching.
-    const targetLower = target.toLowerCase();
-    const landing = this.pendingLandings.find(
-      l => l.target === targetLower && Math.abs(now - l.timestamp) <= LANDING_MATCH_WINDOW_MS
-    );
-
-    if (landing) {
-      // We know the spell name — find a matching pending cast
-      const landingResult = this.attributeWithLanding(landing, target, amount, now, targetIsMob);
-      if (landingResult) {
-        // Consume the landing
-        this.pendingLandings = this.pendingLandings.filter(l => l !== landing);
-        return landingResult;
-      }
-    }
-
-    // ── 4. Spell Cast Correlation (without landing message) ──
-    const castResult = this.attributeFromCasts(target, amount, now, targetIsMob);
-    if (castResult) return castResult;
-
-    // ── 5. Weapon Proc Detection (after spell correlation to avoid stealing small nukes) ──
+    // ── 5. Weapon Proc Detection ──
     if (targetIsMob && amount <= PROC_MAX_DAMAGE) {
       const procHit = this.recentMeleeHits.find(
         h => h.target === target &&

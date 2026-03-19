@@ -2,7 +2,7 @@
   "name": "p99-meter",
   "productName": "p99-meter",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "In-game damage meter overlay for EverQuest Project 1999",
   "main": ".webpack/main",
   "private": true,
   "scripts": {
@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run lint && npm run typecheck && npm run test"
+    "check": "npm run lint && npm run typecheck && npm run test",
+    "dist": "electron-forge package && node scripts/dist.js"
   },
   "keywords": [],
   "author": "Alex",

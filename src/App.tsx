@@ -19,31 +19,19 @@ function App() {
   const resizing = useRef(false);
 
   const [meterH, setMeterH] = useState(window.innerHeight);
-  const tipExpandedRef = useRef(false);
-  const [, forceRender] = useState(0);
 
   useEffect(() => {
-    const onResize = () => {
-      if (resizing.current) {
-        setMeterH(window.innerHeight);
-      } else {
-        forceRender(n => n + 1);
-      }
-    };
+    const onResize = () => setMeterH(window.innerHeight);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const onTooltipExpand = useCallback(() => {
-    if (tipExpandedRef.current) return;
-    tipExpandedRef.current = true;
-    window.electronAPI.expandForTooltip();
+  const onTooltipShow = useCallback((player: any, viewMode: string, barTop: number, barBottom: number) => {
+    window.electronAPI.showTooltip({ player, viewMode, barTop, barBottom });
   }, []);
 
-  const onTooltipCollapse = useCallback(() => {
-    if (!tipExpandedRef.current) return;
-    tipExpandedRef.current = false;
-    window.electronAPI.collapseTooltip();
+  const onTooltipHide = useCallback(() => {
+    window.electronAPI.hideTooltip();
   }, []);
 
   const processRef = useRef(processEvents);
@@ -150,8 +138,8 @@ function App() {
         onAssignPetOwner={assignPetOwner}
         getSuggestedPetOwners={getSuggestedPetOwners}
         onResetOverall={resetOverall}
-        onTooltipExpand={onTooltipExpand}
-        onTooltipCollapse={onTooltipCollapse}
+        onTooltipShow={onTooltipShow}
+        onTooltipHide={onTooltipHide}
       />
     </div>
   );

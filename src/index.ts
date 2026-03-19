@@ -76,6 +76,8 @@ try {
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+declare const TOOLTIP_WINDOW_WEBPACK_ENTRY: string;
+declare const TOOLTIP_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 try {
   if (require('electron-squirrel-startup')) {
@@ -102,7 +104,9 @@ if (!gotLock) {
   });
 }
 
-const EQ_DIR = path.resolve(app.isPackaged ? path.dirname(app.getPath('exe')) : __dirname, '..', '..', '..');
+const EQ_DIR = app.isPackaged
+  ? path.resolve(path.dirname(app.getPath('exe')), '..')
+  : path.resolve(__dirname, '..', '..', '..');
 const LOGS_DIR = path.join(EQ_DIR, 'Logs');
 
 logInfo('Paths resolved', {
@@ -131,16 +135,25 @@ let meterSize = { ...DEFAULT_SIZE };
 let spellDb: Record<string, import('./spellDatabase').SpellInfo> = {};
 let landingMap: Record<string, import('./spellDatabase').LandingSpellInfo[]> = {};
 let landingSuffixes: string[] = [];
-let tipExpanded = false;
-let baseBounds: { x: number; y: number; width: number; height: number } | null = null;
+let tooltipWindow: import('electron').BrowserWindow | null = null;
 
-function collapseTooltipExpansion() {
-  if (!mainWindow || mainWindow.isDestroyed() || !tipExpanded) return;
-  tipExpanded = false;
-  if (baseBounds) {
-    mainWindow.setBounds(baseBounds);
-    baseBounds = null;
-  }
+function clampSizeToDisplays(w: number, h: number): { w: number; h: number } {
+  try {
+    const displays = screen.getAllDisplays();
+    let maxW = 0, maxH = 0;
+    for (const d of displays) {
+      if (d.workArea.width > maxW) maxW = d.workArea.width;
+      if (d.workArea.height > maxH) maxH = d.workArea.height;
+    }
+    if (maxW > 0 && maxH > 0) {
+      const clamped = { w: Math.min(w, maxW), h: Math.min(h, maxH) };
+      if (clamped.w !== w || clamped.h !== h) {
+        logWarn('Saved meter size exceeds display, clamping', { original: { w, h }, clamped, maxW, maxH });
+      }
+      return clamped;
+    }
+  } catch { /* screen may not be ready yet */ }
+  return { w, h };
 }
 
 function loadLayoutFromDisk() {
@@ -149,7 +162,7 @@ function loadLayoutFromDisk() {
       const data = JSON.parse(fs.readFileSync(LAYOUT_FILE, 'utf-8'));
       logDebug('Layout loaded from disk', data);
       if (data.x != null && data.y != null) meterOffset = { x: data.x, y: data.y };
-      if (data.w != null && data.h != null) meterSize = { w: data.w, h: data.h };
+      if (data.w != null && data.h != null) meterSize = clampSizeToDisplays(data.w, data.h);
       return;
     }
   } catch (err: any) {
@@ -159,15 +172,21 @@ function loadLayoutFromDisk() {
 
 function saveCurrentLayout() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  collapseTooltipExpansion();
   const [wx, wy] = mainWindow.getPosition();
   const [w, h] = mainWindow.getSize();
   meterOffset = { x: wx - lastEqBounds.x, y: wy - lastEqBounds.y };
   meterSize = { w, h };
-  const layout = { x: meterOffset.x, y: meterOffset.y, w, h };
   try {
-    fs.writeFileSync(LAYOUT_FILE, JSON.stringify(layout));
-    logDebug('Layout saved', layout);
+    let data: any = {};
+    if (fs.existsSync(LAYOUT_FILE)) {
+      try { data = JSON.parse(fs.readFileSync(LAYOUT_FILE, 'utf-8')); } catch { /* ignore */ }
+    }
+    data.x = meterOffset.x;
+    data.y = meterOffset.y;
+    data.w = w;
+    data.h = h;
+    fs.writeFileSync(LAYOUT_FILE, JSON.stringify(data));
+    logDebug('Layout saved', { x: data.x, y: data.y, w, h });
   } catch (err: any) {
     logError('Failed to save layout', { error: err.message });
   }
@@ -262,12 +281,33 @@ function scheduleClassDbSave() {
   }, 5000);
 }
 
+function clampToVisibleScreen(x: number, y: number, w: number, h: number): { x: number; y: number } {
+  const MIN_VISIBLE = 40;
+  const displays = screen.getAllDisplays();
+  for (const d of displays) {
+    const wa = d.workArea;
+    if (
+      x + w > wa.x + MIN_VISIBLE &&
+      x < wa.x + wa.width - MIN_VISIBLE &&
+      y + h > wa.y + MIN_VISIBLE &&
+      y < wa.y + wa.height - MIN_VISIBLE
+    ) {
+      return { x, y };
+    }
+  }
+  const primary = screen.getPrimaryDisplay().workArea;
+  logWarn('Meter position off-screen, clamping to primary display', { x, y, w, h, primary });
+  return {
+    x: Math.max(primary.x, Math.min(x, primary.x + primary.width - w)),
+    y: Math.max(primary.y, Math.min(y, primary.y + primary.height - h)),
+  };
+}
+
 function repositionMeterToEQ() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  collapseTooltipExpansion();
-  const x = lastEqBounds.x + meterOffset.x;
-  const y = lastEqBounds.y + meterOffset.y;
-  mainWindow.setPosition(x, y);
+  const raw = { x: lastEqBounds.x + meterOffset.x, y: lastEqBounds.y + meterOffset.y };
+  const clamped = clampToVisibleScreen(raw.x, raw.y, meterSize.w, meterSize.h);
+  mainWindow.setPosition(clamped.x, clamped.y);
 }
 
 function findLogs(): { name: string; path: string; character: string; mtime: number }[] {
@@ -351,11 +391,17 @@ function createWindow() {
   // Sized to the meter only (NOT the full EQ window).
   // Transparent pixels pass through to EQ — no setIgnoreMouseEvents needed.
   try {
+    const initPos = clampToVisibleScreen(
+      lastEqBounds.x + meterOffset.x,
+      lastEqBounds.y + meterOffset.y,
+      meterSize.w,
+      meterSize.h,
+    );
     mainWindow = new BrowserWindow({
       width: meterSize.w,
       height: meterSize.h,
-      x: lastEqBounds.x + meterOffset.x,
-      y: lastEqBounds.y + meterOffset.y,
+      x: initPos.x,
+      y: initPos.y,
       transparent: true,
       frame: false,
       thickFrame: false,
@@ -417,8 +463,38 @@ function createWindow() {
   mainWindow.on('closed', () => {
     logInfo('Main window closed');
     mainWindow = null;
+    if (tooltipWindow && !tooltipWindow.isDestroyed()) tooltipWindow.close();
+    tooltipWindow = null;
     if (trackingWindow && !trackingWindow.isDestroyed()) trackingWindow.close();
   });
+
+  // ── 2b. Tooltip window — separate transparent window for hover tooltips ──
+  try {
+    tooltipWindow = new BrowserWindow({
+      parent: mainWindow,
+      width: 320,
+      height: 400,
+      x: -9999,
+      y: -9999,
+      transparent: true,
+      frame: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      focusable: false,
+      hasShadow: false,
+      resizable: false,
+      show: false,
+      webPreferences: {
+        preload: TOOLTIP_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      },
+    });
+    tooltipWindow.setAlwaysOnTop(true, 'screen-saver');
+    tooltipWindow.setIgnoreMouseEvents(true);
+    tooltipWindow.loadURL(TOOLTIP_WINDOW_WEBPACK_ENTRY);
+    logInfo('Tooltip window created');
+  } catch (err: any) {
+    logError('Failed to create tooltip window', { message: err.message, stack: err.stack });
+  }
 
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
   logInfo('alwaysOnTop set', { alwaysOnTop: mainWindow.isAlwaysOnTop() });
@@ -536,10 +612,27 @@ function createTray() {
         },
       },
       {
-        label: 'Reset',
+        label: 'Reset Meter',
         click: () => {
           logInfo('Reset triggered from tray');
           mainWindow?.webContents.send('reset');
+        },
+      },
+      {
+        label: 'Reset Position',
+        click: () => {
+          logInfo('Reset position triggered from tray');
+          if (!mainWindow || mainWindow.isDestroyed()) return;
+          const primary = screen.getPrimaryDisplay().workArea;
+          meterOffset = { ...DEFAULT_OFFSET };
+          meterSize = { ...DEFAULT_SIZE };
+          mainWindow.setBounds({
+            x: primary.x + DEFAULT_OFFSET.x,
+            y: primary.y + DEFAULT_OFFSET.y,
+            width: DEFAULT_SIZE.w,
+            height: DEFAULT_SIZE.h,
+          });
+          saveCurrentLayout();
         },
       },
       {
@@ -585,7 +678,9 @@ if (gotLock) {
 // ── IPC: Window movement (drag) ──
 ipcMain.on('move-window', (_, x: number, y: number) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setPosition(Math.round(x), Math.round(y));
+    const [w, h] = mainWindow.getSize();
+    const clamped = clampToVisibleScreen(Math.round(x), Math.round(y), w, h);
+    mainWindow.setPosition(clamped.x, clamped.y);
   }
 });
 
@@ -611,7 +706,6 @@ function stopResizePolling() {
 
 ipcMain.on('start-resize', (_, data: { screenX: number; screenY: number }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  collapseTooltipExpansion();
   const [w, h] = mainWindow.getSize();
   resizeStart = { cursorX: data.screenX, cursorY: data.screenY, w, h };
   resizeLastCursor = { x: data.screenX, y: data.screenY };
@@ -677,22 +771,57 @@ ipcMain.on('request-status', () => {
   }
 });
 
-// ── IPC: Tooltip window expansion ──
-ipcMain.on('expand-for-tooltip', () => {
-  if (!mainWindow || mainWindow.isDestroyed() || tipExpanded) return;
-  tipExpanded = true;
-  baseBounds = mainWindow.getBounds();
-  const display = screen.getDisplayMatching(baseBounds);
+// ── IPC: Tooltip (separate window) ──
+ipcMain.on('show-tooltip', (_, data: { player: any; viewMode: string; barTop: number; barBottom: number }) => {
+  if (!tooltipWindow || tooltipWindow.isDestroyed()) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  const meterBounds = mainWindow.getBounds();
+  const barScreenY = meterBounds.y + data.barTop;
+  const barScreenBottom = meterBounds.y + data.barBottom;
+
+  const display = screen.getDisplayMatching(meterBounds);
   const wa = display.workArea;
-  const maxBottom = wa.y + wa.height;
-  const newHeight = Math.max(baseBounds.height, maxBottom - baseBounds.y);
-  if (newHeight > baseBounds.height) {
-    mainWindow.setBounds({ x: baseBounds.x, y: baseBounds.y, width: baseBounds.width, height: newHeight });
+  const GAP = 4;
+
+  const spaceAbove = barScreenY - wa.y - GAP;
+  const spaceBelow = (wa.y + wa.height) - barScreenBottom - GAP;
+
+  let tipX = meterBounds.x;
+  let tipY: number;
+  let tipH: number;
+  let anchor: 'top' | 'bottom';
+
+  if (spaceAbove > spaceBelow) {
+    tipY = wa.y;
+    tipH = barScreenY - wa.y - GAP;
+    anchor = 'bottom';
+  } else {
+    tipY = barScreenBottom + GAP;
+    tipH = (wa.y + wa.height) - barScreenBottom - GAP;
+    anchor = 'top';
   }
+
+  tipH = Math.max(50, tipH);
+
+  tooltipWindow.setBounds({
+    x: Math.round(tipX),
+    y: Math.round(tipY),
+    width: meterBounds.width,
+    height: Math.round(tipH),
+  });
+  tooltipWindow.webContents.send('tooltip-data', {
+    player: data.player,
+    viewMode: data.viewMode,
+    anchor,
+  });
+  tooltipWindow.showInactive();
 });
 
-ipcMain.on('collapse-tooltip', () => {
-  collapseTooltipExpansion();
+ipcMain.on('hide-tooltip', () => {
+  if (!tooltipWindow || tooltipWindow.isDestroyed()) return;
+  tooltipWindow.webContents.send('tooltip-hide');
+  tooltipWindow.hide();
 });
 
 // ── IPC: Class DB persistence ──
