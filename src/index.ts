@@ -408,7 +408,7 @@ function createWindow() {
       alwaysOnTop: true,
       skipTaskbar: true,
       hasShadow: false,
-      resizable: true,
+      resizable: false,
       webPreferences: {
         preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       },
