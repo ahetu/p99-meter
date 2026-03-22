@@ -307,7 +307,8 @@ function repositionMeterToEQ() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const raw = { x: lastEqBounds.x + meterOffset.x, y: lastEqBounds.y + meterOffset.y };
   const clamped = clampToVisibleScreen(raw.x, raw.y, meterSize.w, meterSize.h);
-  mainWindow.setPosition(clamped.x, clamped.y);
+  const [w, h] = mainWindow.getSize();
+  mainWindow.setBounds({ x: clamped.x, y: clamped.y, width: w, height: h });
 }
 
 function findLogs(): { name: string; path: string; character: string; mtime: number }[] {
@@ -680,7 +681,7 @@ ipcMain.on('move-window', (_, x: number, y: number) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     const [w, h] = mainWindow.getSize();
     const clamped = clampToVisibleScreen(Math.round(x), Math.round(y), w, h);
-    mainWindow.setPosition(clamped.x, clamped.y);
+    mainWindow.setBounds({ x: clamped.x, y: clamped.y, width: w, height: h });
   }
 });
 
