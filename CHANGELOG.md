@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.2
+
+- Fix: Dragging the title bar simultaneously moved and resized the window on some Windows machines. Use explicit setBounds (with locked width/height) instead of setPosition to prevent size drift during drag.
+
 ## v1.0.1
 
 - Fix: Window could not be dragged to move on Windows 11 — dragging the title bar triggered native resize instead. Disabled native resize borders since the meter uses its own resize grip.
