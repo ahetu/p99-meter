@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.4
+
+- Fix: Window grew continuously while dragging on displays with fractional scaling (e.g. 150%). Root cause was DPI rounding drift — each setBounds/getSize round-trip added ~1px at non-integer scale factors. Window size is now frozen at drag-start.
+
 ## v1.0.3
 
 - Debug: Added detailed drag/resize logging to p99-meter.log to diagnose window movement issues on other machines.

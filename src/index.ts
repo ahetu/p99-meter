@@ -690,23 +690,25 @@ if (gotLock) {
 }
 
 // ── IPC: Window movement (drag) ──
+// Freeze the window size at drag-start to avoid DPI rounding drift.
+// At fractional scale factors (e.g. 1.5x), each setBounds → getSize
+// round-trip can grow the size by 1 px due to logical↔physical rounding.
+let dragFrozenSize: { w: number; h: number } | null = null;
 let dragMoveCount = 0;
+
 ipcMain.on('move-window', (_, x: number, y: number) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    const before = mainWindow.getBounds();
-    const [w, h] = mainWindow.getSize();
-    const clamped = clampToVisibleScreen(Math.round(x), Math.round(y), w, h);
-    mainWindow.setBounds({ x: clamped.x, y: clamped.y, width: w, height: h });
-    const after = mainWindow.getBounds();
+    const size = dragFrozenSize ?? { w: mainWindow.getSize()[0], h: mainWindow.getSize()[1] };
+    const clamped = clampToVisibleScreen(Math.round(x), Math.round(y), size.w, size.h);
+    mainWindow.setBounds({ x: clamped.x, y: clamped.y, width: size.w, height: size.h });
     dragMoveCount++;
-    if (dragMoveCount <= 5 || dragMoveCount % 50 === 0) {
+    if (dragMoveCount <= 3 || dragMoveCount % 100 === 0) {
+      const after = mainWindow.getBounds();
       logDebug('move-window', {
         requested: { x: Math.round(x), y: Math.round(y) },
-        clamped: { x: clamped.x, y: clamped.y },
-        sizeLock: { w, h },
-        before: { x: before.x, y: before.y, w: before.width, h: before.height },
+        frozenSize: size,
         after: { x: after.x, y: after.y, w: after.width, h: after.height },
-        sizeChanged: before.width !== after.width || before.height !== after.height,
+        sizeChanged: size.w !== after.width || size.h !== after.height,
         n: dragMoveCount,
       });
     }
@@ -717,10 +719,12 @@ ipcMain.on('drag-start', (_, data: { anchorX: number; anchorY: number; screenX: 
   dragMoveCount = 0;
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const bounds = mainWindow.getBounds();
+  dragFrozenSize = { w: bounds.width, h: bounds.height };
   logInfo('drag-start', {
     anchor: { x: data.anchorX, y: data.anchorY },
     screen: { x: data.screenX, y: data.screenY },
     windowBounds: bounds,
+    frozenSize: dragFrozenSize,
     dpi: screen.getPrimaryDisplay().scaleFactor,
   });
 });
@@ -729,6 +733,7 @@ ipcMain.on('drag-end', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const bounds = mainWindow.getBounds();
   logInfo('drag-end', { finalBounds: bounds, totalMoves: dragMoveCount });
+  dragFrozenSize = null;
 });
 
 // ── IPC: Window resize (main-process cursor polling) ──
