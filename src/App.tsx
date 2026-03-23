@@ -51,6 +51,7 @@ function App() {
     if ((e.target as HTMLElement).closest('button')) return;
     dragging.current = true;
     dragAnchor.current = { x: e.clientX, y: e.clientY };
+    window.electronAPI.dragStart(e.clientX, e.clientY, e.screenX, e.screenY);
     e.preventDefault();
   }, []);
 
@@ -74,6 +75,7 @@ function App() {
     const onUp = () => {
       if (dragging.current) {
         dragging.current = false;
+        window.electronAPI.dragEnd();
         window.electronAPI.stopDragResize();
       }
       if (resizing.current) {

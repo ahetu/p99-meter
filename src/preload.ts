@@ -11,6 +11,8 @@ export interface ElectronAPI {
   requestStatus: () => void;
   saveClass: (name: string, cls: string) => void;
   moveWindow: (x: number, y: number) => void;
+  dragStart: (anchorX: number, anchorY: number, screenX: number, screenY: number) => void;
+  dragEnd: () => void;
   startResize: (screenX: number, screenY: number) => void;
   stopResize: () => void;
   stopDragResize: () => void;
@@ -51,6 +53,12 @@ const api: ElectronAPI = {
   },
   moveWindow: (x: number, y: number) => {
     ipcRenderer.send('move-window', x, y);
+  },
+  dragStart: (anchorX: number, anchorY: number, screenX: number, screenY: number) => {
+    ipcRenderer.send('drag-start', { anchorX, anchorY, screenX, screenY });
+  },
+  dragEnd: () => {
+    ipcRenderer.send('drag-end');
   },
   startResize: (screenX: number, screenY: number) => {
     ipcRenderer.send('start-resize', { screenX, screenY });

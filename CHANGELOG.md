@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.3
+
+- Debug: Added detailed drag/resize logging to p99-meter.log to diagnose window movement issues on other machines.
+
 ## v1.0.2
 
 - Fix: Dragging the title bar simultaneously moved and resized the window on some Windows machines. Use explicit setBounds (with locked width/height) instead of setPosition to prevent size drift during drag.

@@ -511,6 +511,19 @@ function createWindow() {
     });
   }
 
+  let lastLoggedSize = { w: 0, h: 0 };
+  mainWindow.on('resize', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const b = mainWindow.getBounds();
+    if (b.width !== lastLoggedSize.w || b.height !== lastLoggedSize.h) {
+      logWarn('mainWindow.resize (unexpected)', {
+        bounds: b,
+        dragActive: dragMoveCount > 0,
+      });
+      lastLoggedSize = { w: b.width, h: b.height };
+    }
+  });
+
   mainWindow.showInactive();
 
   // ── 3. Overlay controller — attached to the TRACKING window ──
@@ -677,12 +690,45 @@ if (gotLock) {
 }
 
 // ── IPC: Window movement (drag) ──
+let dragMoveCount = 0;
 ipcMain.on('move-window', (_, x: number, y: number) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
+    const before = mainWindow.getBounds();
     const [w, h] = mainWindow.getSize();
     const clamped = clampToVisibleScreen(Math.round(x), Math.round(y), w, h);
     mainWindow.setBounds({ x: clamped.x, y: clamped.y, width: w, height: h });
+    const after = mainWindow.getBounds();
+    dragMoveCount++;
+    if (dragMoveCount <= 5 || dragMoveCount % 50 === 0) {
+      logDebug('move-window', {
+        requested: { x: Math.round(x), y: Math.round(y) },
+        clamped: { x: clamped.x, y: clamped.y },
+        sizeLock: { w, h },
+        before: { x: before.x, y: before.y, w: before.width, h: before.height },
+        after: { x: after.x, y: after.y, w: after.width, h: after.height },
+        sizeChanged: before.width !== after.width || before.height !== after.height,
+        n: dragMoveCount,
+      });
+    }
   }
+});
+
+ipcMain.on('drag-start', (_, data: { anchorX: number; anchorY: number; screenX: number; screenY: number }) => {
+  dragMoveCount = 0;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const bounds = mainWindow.getBounds();
+  logInfo('drag-start', {
+    anchor: { x: data.anchorX, y: data.anchorY },
+    screen: { x: data.screenX, y: data.screenY },
+    windowBounds: bounds,
+    dpi: screen.getPrimaryDisplay().scaleFactor,
+  });
+});
+
+ipcMain.on('drag-end', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const bounds = mainWindow.getBounds();
+  logInfo('drag-end', { finalBounds: bounds, totalMoves: dragMoveCount });
 });
 
 // ── IPC: Window resize (main-process cursor polling) ──
