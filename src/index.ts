@@ -106,7 +106,7 @@ if (!gotLock) {
 
 const EQ_DIR = app.isPackaged
   ? path.resolve(path.dirname(app.getPath('exe')), '..')
-  : path.resolve(__dirname, '..', '..', '..');
+  : path.resolve(__dirname, '..', '..', '..', '..');
 const LOGS_DIR = path.join(EQ_DIR, 'Logs');
 
 logInfo('Paths resolved', {

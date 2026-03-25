@@ -9,9 +9,9 @@ This is an **Electron overlay app** for EverQuest Project 1999. It parses combat
 
 ## Codebase Location
 
-The source code is at `Z:\Everquest P99\p99-meter\src\`.
+The source code is at `Z:\Everquest P99\AddOns\p99-meter\src\`.
 
-**CRITICAL**: Do NOT confuse this with `Z:\Everquest P99\p99-armory\` which is a separate Next.js web app. The damage meter is p99-meter, NOT p99-armory. Always verify you are editing files inside `p99-meter/src/`.
+**CRITICAL**: Do NOT confuse this with `Z:\Everquest P99\AddOns\p99-armory\` which is a separate Next.js web app. The damage meter is p99-meter, NOT p99-armory. Always verify you are editing files inside `p99-meter/src/`.
 
 ## Architecture
 
@@ -30,7 +30,8 @@ The source code is at `Z:\Everquest P99\p99-meter\src\`.
 ## Build & Run
 
 - Dev: `npm start` (webpack-dev-server with HMR)
-- Package: `npm run package` (outputs to `out/p99-meter-win32-x64/`)
+- Package: `npm run dist` (builds and zips to `out/`)
+- Deploy: `npm run deploy` (copies packaged app to EQ root `p99-meter/` folder)
 - Type check: `npx tsc --noEmit --skipLibCheck`
 - Tests: `npx vitest run`
 

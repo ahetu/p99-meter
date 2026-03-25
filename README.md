@@ -26,20 +26,13 @@ npm start
 
 EverQuest must be running (windowed mode) for the overlay to attach.
 
-## Build
+## Build & Deploy
 
 ```bash
-npm run make
+npm run dist      # package + zip into out/
+npm run deploy    # copy packaged app to EQ root p99-meter/ folder
 ```
 
-Output goes to `out/make/` as a portable zip and/or Squirrel installer.
+## Distribution
 
-## Auto-Launch with EQ
-
-Add this line to `Run_Everquest.bat`:
-
-```batch
-start "" "Z:\Everquest P99\p99-meter\out\p99-meter-win32-x64\p99-meter.exe"
-```
-
-The meter starts in the tray and auto-attaches when the EverQuest window appears.
+Users extract `p99-meter-vX.Y.Z.zip` into their EverQuest directory and run `Setup.bat`. The meter auto-attaches when the EverQuest window appears.

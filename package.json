@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run lint && npm run typecheck && npm run test",
-    "dist": "electron-forge package && node scripts/dist.js"
+    "dist": "electron-forge package && node scripts/dist.js",
+    "deploy": "node scripts/deploy.js"
   },
   "keywords": [],
   "author": "Alex",
