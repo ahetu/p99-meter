@@ -303,12 +303,22 @@ function clampToVisibleScreen(x: number, y: number, w: number, h: number): { x: 
   };
 }
 
+let repositionPending = false;
 function repositionMeterToEQ() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  const raw = { x: lastEqBounds.x + meterOffset.x, y: lastEqBounds.y + meterOffset.y };
-  const clamped = clampToVisibleScreen(raw.x, raw.y, meterSize.w, meterSize.h);
-  const [w, h] = mainWindow.getSize();
-  mainWindow.setBounds({ x: clamped.x, y: clamped.y, width: w, height: h });
+  if (repositionPending) return;
+  repositionPending = true;
+  setImmediate(() => {
+    repositionPending = false;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    try {
+      const raw = { x: lastEqBounds.x + meterOffset.x, y: lastEqBounds.y + meterOffset.y };
+      const clamped = clampToVisibleScreen(raw.x, raw.y, meterSize.w, meterSize.h);
+      mainWindow.setPosition(clamped.x, clamped.y);
+    } catch (err: any) {
+      logError('repositionMeterToEQ native error', { message: err.message });
+    }
+  });
 }
 
 function findLogs(): { name: string; path: string; character: string; mtime: number }[] {
@@ -518,7 +528,7 @@ function createWindow() {
     if (b.width !== lastLoggedSize.w || b.height !== lastLoggedSize.h) {
       logWarn('mainWindow.resize (unexpected)', {
         bounds: b,
-        dragActive: dragMoveCount > 0,
+        dragActive: !!dragFrozenSize,
       });
       lastLoggedSize = { w: b.width, h: b.height };
     }
@@ -640,12 +650,16 @@ function createTray() {
           const primary = screen.getPrimaryDisplay().workArea;
           meterOffset = { ...DEFAULT_OFFSET };
           meterSize = { ...DEFAULT_SIZE };
-          mainWindow.setBounds({
-            x: primary.x + DEFAULT_OFFSET.x,
-            y: primary.y + DEFAULT_OFFSET.y,
-            width: DEFAULT_SIZE.w,
-            height: DEFAULT_SIZE.h,
-          });
+          try {
+            mainWindow.setBounds({
+              x: primary.x + DEFAULT_OFFSET.x,
+              y: primary.y + DEFAULT_OFFSET.y,
+              width: DEFAULT_SIZE.w,
+              height: DEFAULT_SIZE.h,
+            });
+          } catch (err: any) {
+            logError('reset position setBounds native error', { message: err.message });
+          }
           saveCurrentLayout();
         },
       },
@@ -690,27 +704,31 @@ if (gotLock) {
 }
 
 // ── IPC: Window movement (drag) ──
-// Freeze the window size at drag-start to avoid DPI rounding drift.
-// At fractional scale factors (e.g. 1.5x), each setBounds → getSize
-// round-trip can grow the size by 1 px due to logical↔physical rounding.
+// Use setPosition() instead of setBounds() to avoid DPI rounding issues.
+// At fractional scale factors (e.g. 1.5x), setBounds() causes Electron to
+// re-round the size on every call, producing ±1px oscillation, constant
+// resize events, and potential native crashes. setPosition() uses
+// SetWindowPos(SWP_NOSIZE) under the hood — the size is never touched.
 let dragFrozenSize: { w: number; h: number } | null = null;
 let dragMoveCount = 0;
 
 ipcMain.on('move-window', (_, x: number, y: number) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    const size = dragFrozenSize ?? { w: mainWindow.getSize()[0], h: mainWindow.getSize()[1] };
-    const clamped = clampToVisibleScreen(Math.round(x), Math.round(y), size.w, size.h);
-    mainWindow.setBounds({ x: clamped.x, y: clamped.y, width: size.w, height: size.h });
-    dragMoveCount++;
-    if (dragMoveCount <= 3 || dragMoveCount % 100 === 0) {
-      const after = mainWindow.getBounds();
-      logDebug('move-window', {
-        requested: { x: Math.round(x), y: Math.round(y) },
-        frozenSize: size,
-        after: { x: after.x, y: after.y, w: after.width, h: after.height },
-        sizeChanged: size.w !== after.width || size.h !== after.height,
-        n: dragMoveCount,
-      });
+    try {
+      const size = dragFrozenSize ?? { w: mainWindow.getSize()[0], h: mainWindow.getSize()[1] };
+      const clamped = clampToVisibleScreen(Math.round(x), Math.round(y), size.w, size.h);
+      mainWindow.setPosition(clamped.x, clamped.y);
+      dragMoveCount++;
+      if (dragMoveCount <= 3 || dragMoveCount % 100 === 0) {
+        const after = mainWindow.getBounds();
+        logDebug('move-window', {
+          requested: { x: Math.round(x), y: Math.round(y) },
+          after: { x: after.x, y: after.y, w: after.width, h: after.height },
+          n: dragMoveCount,
+        });
+      }
+    } catch (err: any) {
+      logError('move-window native error', { message: err.message });
     }
   }
 });
@@ -718,12 +736,12 @@ ipcMain.on('move-window', (_, x: number, y: number) => {
 ipcMain.on('drag-start', (_, data: { anchorX: number; anchorY: number; screenX: number; screenY: number }) => {
   dragMoveCount = 0;
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  const bounds = mainWindow.getBounds();
-  dragFrozenSize = { w: bounds.width, h: bounds.height };
+  const [w, h] = mainWindow.getSize();
+  dragFrozenSize = { w, h };
   logInfo('drag-start', {
     anchor: { x: data.anchorX, y: data.anchorY },
     screen: { x: data.screenX, y: data.screenY },
-    windowBounds: bounds,
+    windowBounds: mainWindow.getBounds(),
     frozenSize: dragFrozenSize,
     dpi: screen.getPrimaryDisplay().scaleFactor,
   });
@@ -734,6 +752,7 @@ ipcMain.on('drag-end', () => {
   const bounds = mainWindow.getBounds();
   logInfo('drag-end', { finalBounds: bounds, totalMoves: dragMoveCount });
   dragFrozenSize = null;
+  dragMoveCount = 0;
 });
 
 // ── IPC: Window resize (main-process cursor polling) ──
@@ -776,7 +795,11 @@ ipcMain.on('start-resize', (_, data: { screenX: number; screenY: number }) => {
     const newW = Math.max(MIN_RESIZE_W, resizeStart.w + dx);
     const newH = Math.max(MIN_RESIZE_H, resizeStart.h + dy);
     const [x, y] = mainWindow.getPosition();
-    mainWindow.setBounds({ x, y, width: Math.round(newW), height: Math.round(newH) });
+    try {
+      mainWindow.setBounds({ x, y, width: Math.round(newW), height: Math.round(newH) });
+    } catch (err: any) {
+      logError('resize setBounds native error', { message: err.message });
+    }
 
     if (cursor.x === resizeLastCursor.x && cursor.y === resizeLastCursor.y) {
       resizeIdleTicks++;
@@ -856,12 +879,17 @@ ipcMain.on('show-tooltip', (_, data: { player: any; viewMode: string; barTop: nu
 
   tipH = Math.max(50, tipH);
 
-  tooltipWindow.setBounds({
-    x: Math.round(tipX),
-    y: Math.round(tipY),
-    width: meterBounds.width,
-    height: Math.round(tipH),
-  });
+  try {
+    tooltipWindow.setBounds({
+      x: Math.round(tipX),
+      y: Math.round(tipY),
+      width: meterBounds.width,
+      height: Math.round(tipH),
+    });
+  } catch (err: any) {
+    logError('tooltip setBounds native error', { message: err.message });
+    return;
+  }
   tooltipWindow.webContents.send('tooltip-data', {
     player: data.player,
     viewMode: data.viewMode,

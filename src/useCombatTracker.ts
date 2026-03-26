@@ -10,7 +10,8 @@ import { SpellCorrelator } from './spellCorrelator';
 import type { SpellInfo, LandingSpellInfo } from './spellDatabase';
 import { isPetName } from './petData';
 import {
-  COMBAT_TIMEOUT_MS, FIGHT_GAP_MS, LABEL_NONMELEE, LABEL_OTHERS_SPELLS,
+  COMBAT_TIMEOUT_MS, FIGHT_GAP_MS, SESSION_GAP_MS,
+  LABEL_NONMELEE, LABEL_OTHERS_SPELLS,
   isLikelyNPC, normalizeSource, normalizeTarget,
 } from './constants';
 
@@ -253,7 +254,7 @@ export function useCombatTracker(playerName: string) {
   const [viewMode, setViewMode] = useState<ViewMode>('damage');
   const [evtCount, setEvtCount] = useState(0);
   const [inCombat, setInCombat] = useState(false);
-  const [showMode, setShowMode] = useState<'overall' | 'current'>('current');
+  const [showMode, setShowMode] = useState<'session' | 'current'>('current');
 
   const fightsRef = useRef<Fight[]>([]);
   const fightSeq = useRef(0);
@@ -268,6 +269,8 @@ export function useCombatTracker(playerName: string) {
   const entityLevelMap = useRef<Record<string, number>>({});
   const pendingEvents = useRef<CombatEvent[]>([]);
   const globalKnownMobs = useRef(new Set<string>());
+  const sessionStartId = useRef(0);
+  const lastEventTimestamp = useRef(0);
 
   // Keep refs in sync on every render — but never overwrite with empty string
   // if the ref already has a value (protects against HMR re-mount race)
@@ -432,6 +435,17 @@ export function useCombatTracker(playerName: string) {
     }
 
     for (const ev of events) {
+      // ── Session gap detection ──
+      // If >15 min elapsed between consecutive log events, the player was
+      // disconnected/crashed/logged out — start a fresh session.
+      if (ev.timestamp > 0) {
+        if (lastEventTimestamp.current > 0
+            && ev.timestamp - lastEventTimestamp.current > SESSION_GAP_MS) {
+          sessionStartId.current = fightSeq.current;
+        }
+        lastEventTimestamp.current = ev.timestamp;
+      }
+
       // ── /who results → definitive class + level (highest confidence) ──
       if (ev.type === 'who_result') {
         if (ev.skill && ev.skill !== 'ANONYMOUS') {
@@ -774,7 +788,8 @@ export function useCombatTracker(playerName: string) {
     setFights([]);
     setEvtCount(0);
     fightSeq.current = 0;
-    overallStartId.current = 0;
+    sessionStartId.current = 0;
+    lastEventTimestamp.current = 0;
     setFightIdx(-1);
     setInCombat(false);
     if (combatTimer.current) clearTimeout(combatTimer.current);
@@ -820,7 +835,7 @@ export function useCombatTracker(playerName: string) {
       merged = {};
       start = Infinity; end = 0;
       for (const f of fights) {
-        if (f.id < overallStartId.current) continue;
+        if (f.id < sessionStartId.current) continue;
         for (const [k, v] of Object.entries(f.entities)) {
           merged[k] = merged[k] ? mergeEntity(merged[k], v) : { ...v };
         }
@@ -925,13 +940,12 @@ export function useCombatTracker(playerName: string) {
     return correlator.current.getSuggestedPetOwners();
   }, []);
 
-  const overallStartId = useRef(0);
-
-  const resetOverall = useCallback(() => {
+  const resetSession = useCallback(() => {
     const all = fightsRef.current;
-    overallStartId.current = all.length > 0
+    sessionStartId.current = all.length > 0
       ? all[all.length - 1].id + 1
       : fightSeq.current;
+    lastEventTimestamp.current = 0;
   }, []);
 
   return {
@@ -939,6 +953,6 @@ export function useCombatTracker(playerName: string) {
     evtCount, processEvents, reset, getDisplayData,
     inCombat, showMode, setShowMode, seedClassDb, seedSpellDb, seedLandingMap,
     assignPetOwner, getSuggestedPetOwners, setPlayerNameImmediate,
-    resetOverall,
+    resetSession,
   };
 }

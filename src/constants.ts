@@ -7,6 +7,7 @@ export const DOT_TICK_INTERVAL_MS = 6000;
 export const DOT_TICK_TOLERANCE_MS = 1500;
 export const COMBAT_TIMEOUT_MS = 6000;
 export const FIGHT_GAP_MS = 12000;
+export const SESSION_GAP_MS = 15 * 60 * 1000; // 15 minutes — gap longer than this resets the session
 export const LANDING_EXPIRY_MS = 3000;
 export const LANDING_MATCH_WINDOW_MS = 1500;
 

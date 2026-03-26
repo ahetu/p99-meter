@@ -11,7 +11,7 @@ function App() {
     viewMode, setViewMode, fightIdx, setFightIdx, evtCount,
     inCombat, showMode, setShowMode,
     assignPetOwner, getSuggestedPetOwners, setPlayerNameImmediate,
-    resetOverall,
+    resetSession,
   } = useCombatTracker(character);
 
   const dragging = useRef(false);
@@ -139,7 +139,7 @@ function App() {
         onShowModeChange={setShowMode}
         onAssignPetOwner={assignPetOwner}
         getSuggestedPetOwners={getSuggestedPetOwners}
-        onResetOverall={resetOverall}
+        onResetSession={resetSession}
         onTooltipShow={onTooltipShow}
         onTooltipHide={onTooltipHide}
       />

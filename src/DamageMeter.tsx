@@ -29,11 +29,11 @@ interface Props {
   onResizeStart?: (e: React.MouseEvent) => void;
   isDragging?: boolean;
   inCombat?: boolean;
-  showMode: 'overall' | 'current';
-  onShowModeChange: (m: 'overall' | 'current') => void;
+  showMode: 'session' | 'current';
+  onShowModeChange: (m: 'session' | 'current') => void;
   onAssignPetOwner?: (petName: string, ownerName: string) => void;
   getSuggestedPetOwners?: () => string[];
-  onResetOverall?: () => void;
+  onResetSession?: () => void;
   onTooltipShow?: (player: DisplayPlayer, viewMode: ViewMode, barTop: number, barBottom: number) => void;
   onTooltipHide?: () => void;
 }
@@ -73,7 +73,7 @@ export default function DamageMeter(props: Props) {
     onReset, attached, evtCount, character,
     onDragStart, onResizeStart, isDragging, inCombat,
     showMode, onShowModeChange,
-    onAssignPetOwner, getSuggestedPetOwners, onResetOverall,
+    onAssignPetOwner, getSuggestedPetOwners, onResetSession,
     onTooltipShow, onTooltipHide,
   } = props;
   const [hoveredName, setHoveredName] = useState<string | null>(null);
@@ -339,18 +339,18 @@ export default function DamageMeter(props: Props) {
       }}>
         <div style={{ display: 'flex', gap: 0, alignItems: 'center' }}>
           <button
-            onClick={() => { onFightIdxChange(-1); onShowModeChange('overall'); }}
+            onClick={() => { onFightIdxChange(-1); onShowModeChange('session'); }}
             style={{
-              background: showMode === 'overall' ? 'rgba(255,209,0,0.12)' : 'rgba(255,255,255,0.03)',
-              color: showMode === 'overall' ? '#ffd100' : '#999',
-              border: showMode === 'overall' ? '1px solid rgba(255,209,0,0.25)' : '1px solid rgba(255,255,255,0.08)',
+              background: showMode === 'session' ? 'rgba(255,209,0,0.12)' : 'rgba(255,255,255,0.03)',
+              color: showMode === 'session' ? '#ffd100' : '#999',
+              border: showMode === 'session' ? '1px solid rgba(255,209,0,0.25)' : '1px solid rgba(255,255,255,0.08)',
               borderRadius: '3px 0 0 3px',
               padding: '2px 10px', cursor: 'pointer',
-              fontSize: 11, fontFamily: FONT_BAR, fontWeight: showMode === 'overall' ? 700 : 400,
+              fontSize: 11, fontFamily: FONT_BAR, fontWeight: showMode === 'session' ? 700 : 400,
               letterSpacing: 0.3,
-              textShadow: showMode === 'overall' ? '0 0 4px rgba(255,209,0,0.3)' : 'none',
+              textShadow: showMode === 'session' ? '0 0 4px rgba(255,209,0,0.3)' : 'none',
             }}
-          >Overall</button>
+          >Session</button>
           <button
             onClick={() => onShowModeChange('current')}
             style={{
@@ -364,15 +364,15 @@ export default function DamageMeter(props: Props) {
               textShadow: showMode === 'current' ? '0 0 4px rgba(255,209,0,0.3)' : 'none',
             }}
           >Current</button>
-          {showMode === 'overall' && onResetOverall && (
+          {showMode === 'session' && onResetSession && (
             <button
-              onClick={() => { onResetOverall(); onFightIdxChange(-1); }}
+              onClick={() => { onResetSession(); onFightIdxChange(-1); }}
               style={{
                 background: 'none', border: 'none', color: '#666',
                 cursor: 'pointer', fontSize: 12, padding: '0 4px', marginLeft: 3,
                 fontFamily: FONT_BAR, lineHeight: 1,
               }}
-              title="Reset Overall — clears accumulated data and starts fresh"
+              title="Reset Session — clears accumulated data and starts fresh"
             >↺</button>
           )}
         </div>
@@ -383,7 +383,7 @@ export default function DamageMeter(props: Props) {
           fontFamily: FONT_BAR,
         }} title="Reset meter">✕</button>
 
-        {showMode === 'overall' && fightCount > 1 && (
+        {showMode === 'session' && fightCount > 1 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 1, color: '#555' }}>
             <button
               onClick={() => onFightIdxChange(Math.max(0, (fightIdx === -1 ? fightCount - 1 : fightIdx) - 1))}
