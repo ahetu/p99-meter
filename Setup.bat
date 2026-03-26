@@ -29,6 +29,13 @@ if not exist "%EQ_DIR%\eqgame.exe" (
 echo   EverQuest directory: %EQ_DIR%
 echo.
 
+:: Unblock files that Windows marks as "downloaded from the internet".
+:: Without this, SmartScreen silently blocks the exe when launched via shortcut.
+echo   Unblocking downloaded files...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -Path '%METER_DIR%' -Recurse | Unblock-File -ErrorAction SilentlyContinue"
+echo   Done.
+echo.
+
 :: Create desktop shortcut
 echo   Creating desktop shortcut...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
