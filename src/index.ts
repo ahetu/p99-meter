@@ -314,7 +314,7 @@ function repositionMeterToEQ() {
     try {
       const raw = { x: lastEqBounds.x + meterOffset.x, y: lastEqBounds.y + meterOffset.y };
       const clamped = clampToVisibleScreen(raw.x, raw.y, meterSize.w, meterSize.h);
-      mainWindow.setPosition(clamped.x, clamped.y);
+      mainWindow.setBounds({ x: clamped.x, y: clamped.y, width: meterSize.w, height: meterSize.h });
     } catch (err: any) {
       logError('repositionMeterToEQ native error', { message: err.message });
     }
@@ -522,12 +522,25 @@ function createWindow() {
   }
 
   let lastLoggedSize = { w: 0, h: 0 };
+  let sizeSnapInFlight = false;
   mainWindow.on('resize', () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     const b = mainWindow.getBounds();
+
+    // At fractional DPI, setBounds() may still produce a ±1 DIP size change
+    // after the physical→DIP round-trip.  Snap the size back to the frozen
+    // value so it can't accumulate.  Skip during intentional user resize.
+    const target = dragFrozenSize ?? meterSize;
+    if (!sizeSnapInFlight && !resizeStart && (b.width !== target.w || b.height !== target.h)) {
+      sizeSnapInFlight = true;
+      try { mainWindow.setSize(target.w, target.h); } catch { /* ignore */ }
+      setTimeout(() => { sizeSnapInFlight = false; }, 32);
+    }
+
     if (b.width !== lastLoggedSize.w || b.height !== lastLoggedSize.h) {
       logWarn('mainWindow.resize (unexpected)', {
         bounds: b,
+        target,
         dragActive: !!dragFrozenSize,
       });
       lastLoggedSize = { w: b.width, h: b.height };
@@ -704,25 +717,29 @@ if (gotLock) {
 }
 
 // ── IPC: Window movement (drag) ──
-// Use setPosition() instead of setBounds() to avoid DPI rounding issues.
-// At fractional scale factors (e.g. 1.5x), setBounds() causes Electron to
-// re-round the size on every call, producing ±1px oscillation, constant
-// resize events, and potential native crashes. setPosition() uses
-// SetWindowPos(SWP_NOSIZE) under the hood — the size is never touched.
+// At fractional DPI (e.g. 1.5×), Electron's DIP↔physical-pixel round-trip
+// causes the reported size to drift by +1 DIP on every setPosition/setBounds
+// call:  497 DIP → 745.5px → round(746px) → 746/1.5 = 497.33 → 498 DIP.
+// To prevent this, we ALWAYS pass an explicit frozen size to setBounds()
+// that was captured once (at drag-start or from the persisted layout).
+// We never read getSize()/getBounds() to determine what size to set — that
+// would create a feedback loop.  The frozen value maps to the same physical
+// pixel count every time, so the OS sees no actual size change.
 let dragFrozenSize: { w: number; h: number } | null = null;
 let dragMoveCount = 0;
 
 ipcMain.on('move-window', (_, x: number, y: number) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
-      const size = dragFrozenSize ?? { w: mainWindow.getSize()[0], h: mainWindow.getSize()[1] };
+      const size = dragFrozenSize ?? meterSize;
       const clamped = clampToVisibleScreen(Math.round(x), Math.round(y), size.w, size.h);
-      mainWindow.setPosition(clamped.x, clamped.y);
+      mainWindow.setBounds({ x: clamped.x, y: clamped.y, width: size.w, height: size.h });
       dragMoveCount++;
       if (dragMoveCount <= 3 || dragMoveCount % 100 === 0) {
         const after = mainWindow.getBounds();
         logDebug('move-window', {
           requested: { x: Math.round(x), y: Math.round(y) },
+          frozenSize: size,
           after: { x: after.x, y: after.y, w: after.width, h: after.height },
           n: dragMoveCount,
         });
