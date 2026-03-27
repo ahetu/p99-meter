@@ -56,8 +56,11 @@ export function log(level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG', msg: string, dat
     } catch { /* truly cannot log */ }
   }
 
-  // Also write to stdout for dev mode
-  console.log(line);
+  // In dev mode, also write to stdout for convenience
+  const isPackaged = !process.execPath.includes('node_modules');
+  if (!isPackaged) {
+    console.log(line);
+  }
 }
 
 export function logInfo(msg: string, data?: unknown) { log('INFO', msg, data); }

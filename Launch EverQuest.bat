@@ -15,8 +15,8 @@ if not exist "%EQ_DIR%\eqgame.exe" (
 taskkill /F /IM p99-meter.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 
-:: Launch the damage meter
-start "" "%METER_DIR%p99-meter.exe"
+:: Launch the damage meter (hidden console — Electron is a console-subsystem exe)
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath '%METER_DIR%p99-meter.exe' -WindowStyle Hidden"
 
 :: Launch EverQuest on a random CPU core (cores 1-8)
 set /a _rand=%RANDOM%*8/32768+1
