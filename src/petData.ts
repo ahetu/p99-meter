@@ -15,7 +15,7 @@ const PET_NAME_LIST = [
   'gibarn','gibartik','gibekn','giber','gibn','gibobtik','gibtik','gobaber',
   'gobaner','gobann','gobarn','gobartik','gober','gobn','gobober','gobobn',
   'gobobtik','gobtik','gonaner','gonann','gonantik','gonarab','gonarer',
-  'gonarn','gonartik','gonekab','gonekn','goner','gonobtik','gontik','gotik',
+  'gonarn','gonartik','gonekab','gonekn','goner','gonobab','gonobtik','gontik','gotik',
   'jabaner','jabann','jabantik','jabarab','jabarer','jabarn','jabartik',
   'jabekab','jabeker','jabekn','jaber','jabn','jabobtik','jabtik','janab',
   'janer','jann','jantik','jarab','jaranab','jaraner','jararer','jararn',

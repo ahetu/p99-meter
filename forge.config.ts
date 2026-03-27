@@ -62,7 +62,7 @@ const config: ForgeConfig = {
     },
     postPackage: async (_config, result) => {
       const outDir = result.outputPaths[0];
-      for (const file of ['Setup.bat', 'Launch EverQuest.bat']) {
+      for (const file of ['Setup.bat', 'Launch EverQuest.bat', 'README.txt']) {
         const src = path.join(__dirname, file);
         const dest = path.join(outDir, file);
         if (fs.existsSync(src)) {

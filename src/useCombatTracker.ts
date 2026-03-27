@@ -488,8 +488,27 @@ export function useCombatTracker(playerName: string) {
       // ── Buff landing (ambient info, not directly actionable yet) ──
       if (ev.type === 'buff_land') continue;
 
-      // Landing and charm-landing messages are pre-scanned above, skip inline
-      if (ev.type === 'spell_land') continue;
+      // Landing messages are pre-scanned above for the correlator's pending
+      // queue.  Additionally, try to attribute estimated damage for group
+      // members' spells (EQ doesn't log their damage numbers, only the
+      // landing text like "A mob is engulfed by fire.").
+      if (ev.type === 'spell_land') {
+        const estimated = corr.attributeLandingDirect(ev, entityLevelMap.current);
+        if (estimated && estimated.amount > 0) {
+          const tgtName = normalizeTarget(ev.target, pName);
+          const fight = getOrCreateFight(all, ev.timestamp, true);
+          if (fight) {
+            fight.lastEventTime = ev.timestamp;
+            resetCombatTimer();
+            addMob(fight, tgtName);
+            const label = estimated.spellName + ' (est.)';
+            creditDamage(fight, estimated.source, tgtName, estimated.amount, label, false, false, clsMap, true);
+            updateColor(estimated.source, clsMap[estimated.source] || null);
+            dirty = true;
+          }
+        }
+        continue;
+      }
       if (ev.type === 'charm_land') continue;
 
       if (ev.type === 'charm_break') {

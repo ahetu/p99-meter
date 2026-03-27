@@ -734,6 +734,103 @@ export class SpellCorrelator {
     if (this.dotTrackers.length > MAX_DOT_TRACKERS) this.dotTrackers.shift();
   }
 
+  /**
+   * Directly attribute estimated damage from a spell landing message.
+   * Used for group members' spells where EQ doesn't log a damage number.
+   * Matches the landing to a pending "begins to cast" and estimates damage
+   * from the spell DB.  Skips if the player has a recent cast (their real
+   * damage event will follow).
+   */
+  attributeLandingDirect(
+    ev: CombatEvent,
+    entityLevels: Record<string, number>,
+  ): AttributedSpellDamage | null {
+    const suffix = ev.skill?.toLowerCase();
+    if (!suffix) return null;
+
+    const spells = this.landingMap[suffix];
+    if (!spells || spells.length === 0) return null;
+
+    const now = ev.timestamp;
+
+    // If the player has a recent pending cast, the real damage event will
+    // follow — don't estimate or we'd double-count.
+    const playerMayMatch = this.pendingCasts.some(cast =>
+      !cast.consumed &&
+      cast.caster === this.playerName &&
+      (now - cast.timestamp) >= 0 &&
+      (now - cast.timestamp) <= MAX_CAST_WINDOW_MS
+    );
+    if (playerMayMatch) return null;
+
+    let bestCast: PendingCast | null = null;
+    let bestSpell: LandingSpellInfo | null = null;
+    let bestScore = -1;
+
+    for (const cast of this.pendingCasts) {
+      if (cast.consumed) continue;
+      if (cast.caster === this.playerName) continue;
+      if (isLikelyNPC(cast.caster)) continue;
+
+      const elapsed = now - cast.timestamp;
+      if (elapsed < 0) continue;
+
+      for (const spell of spells) {
+        if (spell.baseDmg <= 0) continue;
+
+        const castMs = spell.castMs;
+        if (castMs > 0) {
+          if (elapsed < castMs - CAST_EARLY_TOLERANCE_MS) continue;
+          if (elapsed > castMs + CAST_LATE_TOLERANCE_MS) continue;
+          const timingDelta = Math.abs(elapsed - castMs);
+          const isGroup = this.isKnownPlayer(cast.caster);
+          const base = isGroup ? SCORE_GROUP_LANDING : SCORE_OTHER_LANDING;
+          const score = base - (timingDelta / CAST_LATE_TOLERANCE_MS) * 50;
+          if (score > bestScore) {
+            bestScore = score;
+            bestCast = cast;
+            bestSpell = spell;
+          }
+        } else {
+          if (elapsed < MIN_CAST_TIME_MS || elapsed > MAX_CAST_WINDOW_MS) continue;
+          const isGroup = this.isKnownPlayer(cast.caster);
+          const score = (isGroup ? SCORE_GROUP_LANDING_NOCAST : SCORE_OTHER_LANDING_NOCAST)
+                        - (elapsed / MAX_CAST_WINDOW_MS) * 30;
+          if (score > bestScore) {
+            bestScore = score;
+            bestCast = cast;
+            bestSpell = spell;
+          }
+        }
+      }
+    }
+
+    if (!bestCast || !bestSpell) return null;
+
+    this.consumeCastById(bestCast.id, now);
+
+    const casterLevel = entityLevels[bestCast.caster] || 0;
+    let estimatedDmg: number;
+    if (casterLevel > 0) {
+      estimatedDmg = calcExpectedDamage(bestSpell, casterLevel);
+      if (estimatedDmg <= 0) estimatedDmg = bestSpell.maxDmg || bestSpell.baseDmg;
+    } else {
+      estimatedDmg = bestSpell.maxDmg > 0 ? bestSpell.maxDmg : bestSpell.baseDmg;
+    }
+
+    if (estimatedDmg <= 0) return null;
+
+    return {
+      source: bestCast.caster,
+      target: ev.target,
+      amount: estimatedDmg,
+      isDamageShield: false,
+      isDoT: false,
+      spellName: bestSpell.spellName,
+      confidence: 'medium',
+    };
+  }
+
   reset() {
     this.pendingCasts = [];
     this.recentMeleeHits = [];
