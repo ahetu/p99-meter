@@ -15,8 +15,11 @@ if not exist "%EQ_DIR%\eqgame.exe" (
 taskkill /F /IM p99-meter.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 
-:: Launch the damage meter (hidden console — Electron is a console-subsystem exe)
-powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath '%METER_DIR%p99-meter.exe' -WindowStyle Hidden"
+:: Launch the damage meter without a visible console window.
+:: CreateNoWindow suppresses the console (Electron is console-subsystem) without
+:: setting SW_HIDE in STARTUPINFO, which would also hide the Electron GUI windows.
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command ^
+    "$psi = New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName = '%METER_DIR%p99-meter.exe'; $psi.CreateNoWindow = $true; $psi.UseShellExecute = $false; [void][System.Diagnostics.Process]::Start($psi)"
 
 :: Launch EverQuest on a random CPU core (cores 1-8)
 set /a _rand=%RANDOM%*8/32768+1
