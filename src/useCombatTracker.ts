@@ -271,6 +271,7 @@ export function useCombatTracker(playerName: string) {
   const globalKnownMobs = useRef(new Set<string>());
   const sessionStartId = useRef(0);
   const lastEventTimestamp = useRef(0);
+  const trackerEpoch = useRef(Date.now());
 
   // Keep refs in sync on every render — but never overwrite with empty string
   // if the ref already has a value (protects against HMR re-mount race)
@@ -593,6 +594,13 @@ export function useCombatTracker(playerName: string) {
       if (ev.type === 'group_leave') { corr.removeGroupMember(ev.source); continue; }
       if (ev.type === 'group_chat') { corr.addGroupMember(ev.source); continue; }
 
+      if (ev.type === 'login') {
+        trackerEpoch.current = ev.timestamp;
+        corr.reset();
+        corr.setPlayerName(pName);
+        continue;
+      }
+
       if (ev.type === 'zone_change') {
         corr.reset();
         corr.setPlayerName(pName);
@@ -809,6 +817,7 @@ export function useCombatTracker(playerName: string) {
     fightSeq.current = 0;
     sessionStartId.current = 0;
     lastEventTimestamp.current = 0;
+    trackerEpoch.current = Date.now();
     setFightIdx(-1);
     setInCombat(false);
     if (combatTimer.current) clearTimeout(combatTimer.current);
@@ -839,10 +848,16 @@ export function useCombatTracker(playerName: string) {
 
     if (showMode === 'current') {
       // Show the most recent fight with actual data.
-      // If the very latest fight is brand-new (no entities yet), fall back to previous.
+      // Skip fights from the initial backfill that ended well before the meter started —
+      // prevents showing 12-hour-old data from the log tail on a fresh login.
+      const staleThreshold = trackerEpoch.current - 120_000;
       let f: Fight | undefined;
       for (let i = fights.length - 1; i >= 0; i--) {
-        if (Object.keys(fights[i].entities).length > 0) { f = fights[i]; break; }
+        const fight = fights[i];
+        if (Object.keys(fight.entities).length === 0) continue;
+        if (fight.ended && fight.lastEventTime < staleThreshold) break;
+        f = fight;
+        break;
       }
       if (!f) return empty;
       merged = {};

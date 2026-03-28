@@ -17,6 +17,7 @@ export type CombatEventType =
   | 'group_join'         // "Fluphy has joined the group."
   | 'group_leave'        // "Fluphy has left the group."
   | 'group_chat'         // "Fluphy tells the group, '...'"
+  | 'login'              // "Welcome to EverQuest!" — fresh login (not zoning)
   | 'zone_change'
   | 'who_result'         // "[55 Wizard] Soandso (High Elf) <Guild>"
   | 'buff_land'          // Spell-effect landing messages that imply caster class
@@ -75,6 +76,7 @@ const YOU_GROUP_JOIN_RE = /^You have joined the group\.$/;
 const YOU_GROUP_LEAVE_RE = /^You have left the group\.$/;
 const GROUP_CHAT_RE = /^(.+?) tells the group, '.*'$/;
 const ZONE_RE = /^You have entered (.+?)\.$/;
+const LOGIN_RE = /^Welcome to EverQuest!$/;
 
 // /who output: "[55 Wizard] Soandso (Race)" or "[ANONYMOUS] Soandso"
 // Require (Race) after the name to avoid false positives on other bracketed messages
@@ -250,6 +252,9 @@ export function parseLine(line: string): CombatEvent | null {
 
   m = GROUP_CHAT_RE.exec(msg);
   if (m) return { timestamp, type: 'group_chat', source: m[1], target: '', amount: 0, skill: '' };
+
+  // Login
+  if (LOGIN_RE.test(msg)) return { timestamp, type: 'login', source: 'You', target: '', amount: 0, skill: '' };
 
   // Zone change
   m = ZONE_RE.exec(msg);

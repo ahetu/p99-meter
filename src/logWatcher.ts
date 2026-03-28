@@ -5,10 +5,12 @@ import { TIMESTAMP_RE, CHARM_LANDING_SUFFIXES } from './constants';
 
 const POLL_MS = 250;
 const INITIAL_TAIL = 256 * 1024;
+const IDLE_THRESHOLD = 8; // consecutive empty polls before firing onIdle (~2 seconds)
 
 export class LogWatcher {
   private filePath: string;
   private onEvents: (events: CombatEvent[]) => void;
+  private onIdle: (() => void) | null = null;
   private position = 0;
   private lineBuffer = '';
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -16,11 +18,16 @@ export class LogWatcher {
   private totalEventsEmitted = 0;
   private pollErrors = 0;
   private landingSuffixes: string[] = [];
+  private idlePolls = 0;
+  private idleFired = false;
+  private backfillDone = false;
 
   constructor(filePath: string, onEvents: (events: CombatEvent[]) => void) {
     this.filePath = filePath;
     this.onEvents = onEvents;
   }
+
+  setOnIdle(cb: () => void) { this.onIdle = cb; }
 
   setLandingSuffixes(suffixes: string[]) {
     // Sort longest-first for greedy matching
@@ -61,6 +68,9 @@ export class LogWatcher {
     this.pollErrors = 0;
     this.timer = setInterval(() => this.poll(), POLL_MS);
     this.poll();
+    this.backfillDone = true;
+    this.idlePolls = 0;
+    this.idleFired = false;
     logInfo('LogWatcher polling started', { intervalMs: POLL_MS });
   }
 
@@ -88,7 +98,18 @@ export class LogWatcher {
       return;
     }
 
-    if (size <= this.position) return;
+    if (size <= this.position) {
+      if (this.backfillDone && !this.idleFired) {
+        this.idlePolls++;
+        if (this.idlePolls >= IDLE_THRESHOLD && this.onIdle) {
+          this.idleFired = true;
+          this.onIdle();
+        }
+      }
+      return;
+    }
+    this.idlePolls = 0;
+    this.idleFired = false;
 
     const readSize = size - this.position;
     let buf: Buffer;

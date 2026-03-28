@@ -121,6 +121,7 @@ let trackingWindow: import('electron').BrowserWindow | null = null;
 let tray: import('electron').Tray | null = null;
 let logWatcher: InstanceType<typeof LogWatcher> | null = null;
 let currentLogStatus: { attached: boolean; character: string; logFile: string } | null = null;
+let currentWatchedLogPath: string | null = null;
 let lastEqBounds = { x: 0, y: 0, width: 1024, height: 768 };
 
 // ── Layout persistence ──
@@ -599,6 +600,7 @@ function startLogWatcher() {
 
   logInfo('Starting log watcher', { file: logFile.name, character: logFile.character });
 
+  currentWatchedLogPath = logFile.path;
   currentLogStatus = { attached: true, character: logFile.character, logFile: logFile.name };
   mainWindow.webContents.send('log-status', currentLogStatus);
 
@@ -611,8 +613,28 @@ function startLogWatcher() {
   if (landingSuffixes.length > 0) {
     logWatcher.setLandingSuffixes(landingSuffixes);
   }
+  logWatcher.setOnIdle(() => checkForLogSwitch());
   logWatcher.start();
   logInfo('Log watcher started and polling');
+}
+
+function checkForLogSwitch() {
+  if (!currentWatchedLogPath) return;
+  const logs = findLogs();
+  if (logs.length === 0) return;
+  const newest = logs[0];
+  if (newest.path === currentWatchedLogPath) return;
+
+  logInfo('Character switch detected', {
+    oldFile: path.basename(currentWatchedLogPath),
+    newFile: newest.name,
+    newCharacter: newest.character,
+  });
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('reset');
+  }
+  startLogWatcher();
 }
 
 function stopLogWatcher() {
