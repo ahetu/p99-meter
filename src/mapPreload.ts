@@ -1,14 +1,23 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+export interface MapSettings {
+  darkMode?: boolean;
+  centerOnPlayer?: boolean;
+  zoomCache?: Record<string, { zoom: number; panX: number; panY: number }>;
+}
+
 export interface MapAPI {
   onMapData: (cb: (data: any) => void) => void;
   onPlayerLocation: (cb: (loc: { x: number; y: number; z: number }) => void) => void;
   onZoneChanged: (cb: (zone: string) => void) => void;
+  onSettings: (cb: (settings: MapSettings) => void) => void;
   moveMapWindow: (x: number, y: number) => void;
   mapDragStart: (anchorX: number, anchorY: number, screenX: number, screenY: number) => void;
   mapDragEnd: () => void;
   mapResizeStart: (screenX: number, screenY: number) => void;
   mapResizeEnd: () => void;
+  hideMap: () => void;
+  saveSettings: (settings: MapSettings) => void;
 }
 
 // Buffer the last message per channel so late-registering listeners
@@ -35,11 +44,13 @@ function bufferedChannel<T>(channel: string) {
 const onMapData = bufferedChannel<any>('map-data');
 const onPlayerLocation = bufferedChannel<{ x: number; y: number; z: number }>('player-location');
 const onZoneChanged = bufferedChannel<string>('map-zone-changed');
+const onSettings = bufferedChannel<MapSettings>('map-load-settings');
 
 contextBridge.exposeInMainWorld('mapAPI', {
   onMapData,
   onPlayerLocation,
   onZoneChanged,
+  onSettings,
   moveMapWindow: (x: number, y: number) => {
     ipcRenderer.send('map-move-window', x, y);
   },
@@ -54,5 +65,11 @@ contextBridge.exposeInMainWorld('mapAPI', {
   },
   mapResizeEnd: () => {
     ipcRenderer.send('map-resize-end');
+  },
+  hideMap: () => {
+    ipcRenderer.send('hide-map');
+  },
+  saveSettings: (settings: MapSettings) => {
+    ipcRenderer.send('map-save-settings', settings);
   },
 } satisfies MapAPI);

@@ -18,6 +18,7 @@ export type CombatEventType =
   | 'group_leave'        // "Fluphy has left the group."
   | 'group_chat'         // "Fluphy tells the group, '...'"
   | 'login'              // "Welcome to EverQuest!" — fresh login (not zoning)
+  | 'loading_screen'     // "LOADING, PLEASE WAIT..." — signals imminent zone change
   | 'zone_change'
   | 'who_result'         // "[55 Wizard] Soandso (High Elf) <Guild>"
   | 'buff_land'          // Spell-effect landing messages that imply caster class
@@ -87,6 +88,7 @@ const GROUP_CHAT_RE = /^(.+?) tells the group, '.*'$/;
 const ZONE_RE = /^You have entered (.+?)\.$/;
 const WHO_ZONE_RE = /^There (?:are|is) \d+ players? in (.+?)\.$/;
 const LOGIN_RE = /^Welcome to EverQuest!$/;
+const LOADING_RE = /^LOADING, PLEASE WAIT\.\.\.$/;
 const LOC_RE = /^Your Location is (-?[\d.]+), (-?[\d.]+), (-?[\d.]+)$/;
 
 // /who output: "[55 Wizard] Soandso (Race)" or "[ANONYMOUS] Soandso"
@@ -266,6 +268,9 @@ export function parseLine(line: string): CombatEvent | null {
 
   // Login
   if (LOGIN_RE.test(msg)) return { timestamp, type: 'login', source: 'You', target: '', amount: 0, skill: '' };
+
+  // Loading screen (signals imminent zone change)
+  if (LOADING_RE.test(msg)) return { timestamp, type: 'loading_screen', source: 'You', target: '', amount: 0, skill: '' };
 
   // Player location (/loc)
   m = LOC_RE.exec(msg);

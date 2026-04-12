@@ -3,17 +3,26 @@ import { createRoot } from 'react-dom/client';
 import MapOverlay from './MapOverlay';
 import type { ZoneMap } from './mapParser';
 
+interface MapSettings {
+  darkMode?: boolean;
+  centerOnPlayer?: boolean;
+  zoomCache?: Record<string, { zoom: number; panX: number; panY: number }>;
+}
+
 declare global {
   interface Window {
     mapAPI: {
       onMapData: (cb: (data: ZoneMap) => void) => void;
       onPlayerLocation: (cb: (loc: { x: number; y: number; z: number }) => void) => void;
       onZoneChanged: (cb: (zone: string) => void) => void;
+      onSettings: (cb: (settings: MapSettings) => void) => void;
       moveMapWindow: (x: number, y: number) => void;
       mapDragStart: (anchorX: number, anchorY: number, screenX: number, screenY: number) => void;
       mapDragEnd: () => void;
       mapResizeStart: (screenX: number, screenY: number) => void;
       mapResizeEnd: () => void;
+      hideMap: () => void;
+      saveSettings: (settings: MapSettings) => void;
     };
   }
 }
@@ -23,6 +32,7 @@ function MapApp() {
   const [zoneName, setZoneName] = useState('');
   const [playerLoc, setPlayerLoc] = useState<{ x: number; y: number; z: number } | null>(null);
   const [prevLoc, setPrevLoc] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [settings, setSettings] = useState<MapSettings>({});
 
   const dragging = useRef(false);
   const dragAnchor = useRef({ x: 0, y: 0 });
@@ -43,6 +53,14 @@ function MapApp() {
     window.mapAPI.onZoneChanged((zone) => {
       setZoneName(zone);
     });
+    window.mapAPI.onSettings((s) => {
+      setSettings(s);
+    });
+  }, []);
+
+  const onSaveSettings = useCallback((s: MapSettings) => {
+    window.mapAPI.saveSettings(s);
+    setSettings(prev => ({ ...prev, ...s }));
   }, []);
 
   const onDragStart = useCallback((e: React.MouseEvent) => {
@@ -87,6 +105,10 @@ function MapApp() {
     };
   }, []);
 
+  const onClose = useCallback(() => {
+    window.mapAPI.hideMap();
+  }, []);
+
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
       <MapOverlay
@@ -96,6 +118,9 @@ function MapApp() {
         prevPlayerLoc={prevLoc}
         onDragStart={onDragStart}
         onResizeStart={onResizeStart}
+        onClose={onClose}
+        initialSettings={settings}
+        onSaveSettings={onSaveSettings}
       />
     </div>
   );

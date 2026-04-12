@@ -229,6 +229,11 @@ describe('logParser — zone change', () => {
     expect(ev!.type).toBe('zone_change');
     expect(ev!.target).toBe('East Commonlands');
   });
+
+  it('parses loading screen', () => {
+    const ev = parse('LOADING, PLEASE WAIT...');
+    expect(ev!.type).toBe('loading_screen');
+  });
 });
 
 describe('logParser — charm', () => {

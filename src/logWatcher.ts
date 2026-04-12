@@ -19,7 +19,6 @@ export class LogWatcher {
   private pollErrors = 0;
   private landingSuffixes: string[] = [];
   private idlePolls = 0;
-  private idleFired = false;
   private backfillDone = false;
 
   constructor(filePath: string, onEvents: (events: CombatEvent[]) => void) {
@@ -70,7 +69,6 @@ export class LogWatcher {
     this.poll();
     this.backfillDone = true;
     this.idlePolls = 0;
-    this.idleFired = false;
     logInfo('LogWatcher polling started', { intervalMs: POLL_MS });
   }
 
@@ -99,17 +97,15 @@ export class LogWatcher {
     }
 
     if (size <= this.position) {
-      if (this.backfillDone && !this.idleFired) {
+      if (this.backfillDone) {
         this.idlePolls++;
-        if (this.idlePolls >= IDLE_THRESHOLD && this.onIdle) {
-          this.idleFired = true;
+        if (this.idlePolls >= IDLE_THRESHOLD && this.idlePolls % IDLE_THRESHOLD === 0 && this.onIdle) {
           this.onIdle();
         }
       }
       return;
     }
     this.idlePolls = 0;
-    this.idleFired = false;
 
     const readSize = size - this.position;
     let buf: Buffer;
@@ -159,7 +155,7 @@ export class LogWatcher {
       }
     }
 
-    this.position = size - Buffer.byteLength(this.lineBuffer, 'utf-8');
+    this.position = size;
 
     if (events.length > 0) {
       this.totalEventsEmitted += events.length;

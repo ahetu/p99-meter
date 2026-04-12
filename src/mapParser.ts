@@ -4,11 +4,14 @@ export interface MapLine {
   r: number; g: number; b: number;
 }
 
+export type LabelCategory = 'zone' | 'landmark' | 'vendor' | 'hunter' | 'ground' | 'named' | 'noise' | 'nonp99';
+
 export interface MapLabel {
   x: number; y: number; z: number;
   r: number; g: number; b: number;
   size: 'small' | 'large';
   text: string;
+  category: LabelCategory;
 }
 
 export interface MapBounds {
@@ -17,10 +20,39 @@ export interface MapBounds {
   minZ: number; maxZ: number;
 }
 
+export interface FloorInfo {
+  zMin: number;
+  zMax: number;
+  zCenter: number;
+}
+
+export type ZMode = 'flat' | 'floors' | 'window';
+
 export interface ZoneMap {
   lines: MapLine[];
   labels: MapLabel[];
   bounds: MapBounds;
+  zMode: ZMode;
+  floors: FloorInfo[];
+}
+
+const NON_P99_RE = /Plane_of_Knowledge|Click_Book|Corathus|Feerott_the_Dream|the_Dream_\(click\)|LDoN|Wayfarer|Magus_.*Port|\(Mission[,)]|\(Parcels\)|DKU[:\d]|\(Melee_Augs\)|\(Kill_Quests?\)|Nights?_of_the_Dead|\(Reborn\)|Fabled_|_the_Fabled_/i;
+const NOISE_RE = /^\.$|^[0-9]$|^https?:|^Revised_Map:|^Original_Map:|^Return_of_the|eqmaps\.info|roteguild\.org/i;
+const ZONE_RE = /^to_/i;
+const HUNTER_RE = /\(Hunter|\(Roam/i;
+const VENDOR_RE = /\((Merchant|Spells|Smithing|Tailor|Weapons|Armor|Bar|Baking|Fishing|Fletching|Jewelry|Gems|Pottery|Brewing|Tinkering|Research|Alchemy|Poison|Soulbinder|Banker|GM_)/i;
+const GROUND_SPAWN_RE = /^GS[_:]|^GS$/i;
+const LANDMARK_RE = /^(Succor|Druid_Ring|Wizard_Spires|Minor_Spires|Fake_Wall|Safe_Hall|Safe_Spot|Safe_Room|TRAP|Ladder|Bridge|Pit|Waterfall|Toll_Booth|Up|Down|Bedroom|Spider_Room|Camp_?Fire|Undead_Tower|Submerged_Hut|Swamp_Boat|Kobolds?|Kolbolds?)$|\b(Camp|Room|Entrance|Exit|Tunnel|Stairs|Door|Gate|Tower|Arena|Hut|Village|Ring|Spires)\b/i;
+
+function classifyLabel(raw: string): LabelCategory {
+  if (NOISE_RE.test(raw)) return 'noise';
+  if (NON_P99_RE.test(raw)) return 'nonp99';
+  if (ZONE_RE.test(raw)) return 'zone';
+  if (LANDMARK_RE.test(raw)) return 'landmark';
+  if (GROUND_SPAWN_RE.test(raw)) return 'ground';
+  if (HUNTER_RE.test(raw)) return 'hunter';
+  if (VENDOR_RE.test(raw)) return 'vendor';
+  return 'named';
 }
 
 /**
@@ -61,12 +93,16 @@ export function parseMapData(text: string): ZoneMap {
     } else if (trimmed.startsWith('P ')) {
       const parts = trimmed.substring(2).split(',').map(s => s.trim()).filter(Boolean);
       if (parts.length < 8) continue;
-      const isLarge = parts[7].toLowerCase().startsWith('to_') || parts[7].toLowerCase().startsWith('to ');
+      const rawLabel = parts.slice(7).join(',');
+      const text = rawLabel.replace(/_/g, ' ');
+      const category = classifyLabel(rawLabel);
+      const isLarge = rawLabel.toLowerCase().startsWith('to_') || rawLabel.toLowerCase().startsWith('to ');
       labels.push({
         x: parseFloat(parts[0]), y: parseFloat(parts[1]), z: parseFloat(parts[2]),
         r: parseInt(parts[3], 10), g: parseInt(parts[4], 10), b: parseInt(parts[5], 10),
         size: isLarge ? 'large' : 'small',
-        text: parts.slice(7).join(',').replace(/_/g, ' '),
+        text,
+        category,
       });
     }
   }
@@ -75,5 +111,75 @@ export function parseMapData(text: string): ZoneMap {
     bounds.minX = bounds.maxX = bounds.minY = bounds.maxY = bounds.minZ = bounds.maxZ = 0;
   }
 
-  return { lines, labels, bounds };
+  const { zMode, floors } = detectFloors(lines, bounds);
+  return { lines, labels, bounds, zMode, floors };
+}
+
+const FLOOR_BIN_SIZE = 5;
+const FLOOR_GAP_THRESHOLD = 20;
+const FLAT_Z_RANGE = 200;
+const MIN_FLOOR_COUNT = 3;
+
+function detectFloors(lines: MapLine[], bounds: MapBounds): { zMode: ZMode; floors: FloorInfo[] } {
+  const zRange = bounds.maxZ - bounds.minZ;
+  if (zRange < FLAT_Z_RANGE) return { zMode: 'flat', floors: [] };
+  if (lines.length === 0) return { zMode: 'flat', floors: [] };
+
+  // Build histogram of z-midpoints using fixed bins
+  const binCount = Math.ceil(zRange / FLOOR_BIN_SIZE) + 1;
+  const bins = new Uint32Array(binCount);
+  for (const line of lines) {
+    const zmid = (line.z1 + line.z2) / 2;
+    const idx = Math.floor((zmid - bounds.minZ) / FLOOR_BIN_SIZE);
+    if (idx >= 0 && idx < binCount) bins[idx]++;
+  }
+
+  // Find contiguous groups of non-empty bins separated by gaps
+  const groups: { startBin: number; endBin: number }[] = [];
+  let inGroup = false;
+  let groupStart = 0;
+  for (let i = 0; i < binCount; i++) {
+    if (bins[i] > 0) {
+      if (!inGroup) { inGroup = true; groupStart = i; }
+    } else {
+      if (inGroup) {
+        groups.push({ startBin: groupStart, endBin: i - 1 });
+        inGroup = false;
+      }
+    }
+  }
+  if (inGroup) groups.push({ startBin: groupStart, endBin: binCount - 1 });
+
+  // Check gaps between consecutive groups
+  const floors: FloorInfo[] = [];
+  let hasLargeGaps = true;
+  let largeGapCount = 0;
+  for (let i = 0; i < groups.length; i++) {
+    if (i > 0) {
+      const gapBins = groups[i].startBin - groups[i - 1].endBin - 1;
+      const gapUnits = gapBins * FLOOR_BIN_SIZE;
+      if (gapUnits >= FLOOR_GAP_THRESHOLD) {
+        largeGapCount++;
+      } else {
+        // Merge this group with the previous one
+        const prev = floors[floors.length - 1];
+        if (prev) {
+          const g = groups[i];
+          prev.zMax = bounds.minZ + (g.endBin + 1) * FLOOR_BIN_SIZE;
+          prev.zCenter = (prev.zMin + prev.zMax) / 2;
+          continue;
+        }
+      }
+    }
+    const g = groups[i];
+    const zMin = bounds.minZ + g.startBin * FLOOR_BIN_SIZE;
+    const zMax = bounds.minZ + (g.endBin + 1) * FLOOR_BIN_SIZE;
+    floors.push({ zMin, zMax, zCenter: (zMin + zMax) / 2 });
+  }
+
+  if (largeGapCount >= MIN_FLOOR_COUNT - 1 && floors.length >= MIN_FLOOR_COUNT) {
+    return { zMode: 'floors', floors };
+  }
+
+  return { zMode: 'window', floors: [] };
 }

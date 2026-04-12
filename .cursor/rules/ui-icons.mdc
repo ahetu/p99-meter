@@ -1,0 +1,20 @@
+---
+description: Use lucide-react for icons in React UIs
+alwaysApply: true
+---
+
+# Icons: Use Lucide React
+
+When building UI that needs icons, always use `lucide-react` instead of hand-drawn SVGs or unicode symbols.
+
+```tsx
+import { Search, X, Sun, Moon, Crosshair } from 'lucide-react';
+
+<Search size={14} />
+<X size={12} />
+```
+
+- Already installed as a dependency
+- Use `size` prop to control dimensions
+- Use `strokeWidth` for weight adjustments (default 2)
+- Use `color` or inherit via CSS `currentColor`

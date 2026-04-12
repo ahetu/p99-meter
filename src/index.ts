@@ -150,6 +150,8 @@ let mapWindow: import('electron').BrowserWindow | null = null;
 let mapVisible = false;
 let currentMapZone = '';
 let currentMapZoneDisplay = '';
+let pendingZoneReload = false;
+let mapSettings: { darkMode?: boolean; centerOnPlayer?: boolean; zoomCache?: Record<string, { zoom: number; panX: number; panY: number }> } = {};
 
 const DEFAULT_MAP_SIZE = { w: 450, h: 450 };
 const DEFAULT_MAP_OFFSET = { x: -470, y: 20 };
@@ -185,6 +187,9 @@ function loadLayoutFromDisk() {
       if (data.mapX != null && data.mapY != null) mapOffset = { x: data.mapX, y: data.mapY };
       if (data.mapW != null && data.mapH != null) mapSize = clampSizeToDisplays(data.mapW, data.mapH);
       if (data.mapVisible != null) mapVisible = data.mapVisible;
+      if (data.mapDarkMode != null) mapSettings.darkMode = data.mapDarkMode;
+      if (data.mapCenterOnPlayer != null) mapSettings.centerOnPlayer = data.mapCenterOnPlayer;
+      if (data.mapZoomCache != null) mapSettings.zoomCache = data.mapZoomCache;
       return;
     }
   } catch (err: any) {
@@ -219,6 +224,9 @@ function saveCurrentLayout() {
     data.mapW = mapSize.w;
     data.mapH = mapSize.h;
     data.mapVisible = mapVisible;
+    if (mapSettings.darkMode != null) data.mapDarkMode = mapSettings.darkMode;
+    if (mapSettings.centerOnPlayer != null) data.mapCenterOnPlayer = mapSettings.centerOnPlayer;
+    if (mapSettings.zoomCache) data.mapZoomCache = mapSettings.zoomCache;
     fs.writeFileSync(LAYOUT_FILE, JSON.stringify(data));
     logDebug('Layout saved', { x: data.x, y: data.y, w, h, mapVisible });
   } catch (err: any) {
@@ -574,6 +582,7 @@ function createWindow() {
 
     mapWindow.webContents.on('did-finish-load', () => {
       logInfo('Map renderer finished loading');
+      sendToMap('map-load-settings', mapSettings);
       if (currentMapZone) {
         loadAndSendMapData(currentMapZone);
         sendToMap('map-zone-changed', currentMapZoneDisplay || currentMapZone);
@@ -723,10 +732,12 @@ function sendToMap(channel: string, data: any) {
 
 function handleZoneChange(displayName: string) {
   const shortName = resolveZoneShortName(displayName);
-  if (shortName === currentMapZone) return;
+  const forceReload = pendingZoneReload;
+  pendingZoneReload = false;
+  if (shortName === currentMapZone && !forceReload) return;
   currentMapZone = shortName;
   currentMapZoneDisplay = displayName;
-  logInfo('Map zone change', { displayName, shortName });
+  logInfo('Map zone change', { displayName, shortName, forced: forceReload });
   sendToMap('map-zone-changed', displayName);
   loadAndSendMapData(shortName);
 }
@@ -781,10 +792,11 @@ function startLogWatcher() {
       logDebug('Sending combat events to renderer', { count: events.length });
       mainWindow.webContents.send('combat-events', events);
     }
-    // Forward location and zone events to map window
     for (const evt of events) {
       if (evt.type === 'player_location' && evt.location) {
         sendToMap('player-location', evt.location);
+      } else if (evt.type === 'loading_screen') {
+        pendingZoneReload = true;
       } else if (evt.type === 'zone_change' && evt.target) {
         handleZoneChange(evt.target);
       }
@@ -1166,6 +1178,33 @@ ipcMain.on('toggle-map', () => {
   // Notify the meter renderer about visibility state
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('map-visibility', mapVisible);
+  }
+  saveCurrentLayout();
+});
+
+ipcMain.on('hide-map', () => {
+  if (!mapWindow || mapWindow.isDestroyed()) return;
+  mapVisible = false;
+  mapWindow.hide();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('map-visibility', false);
+  }
+  saveCurrentLayout();
+});
+
+ipcMain.on('map-save-settings', (_: any, settings: any) => {
+  if (settings.darkMode != null) mapSettings.darkMode = settings.darkMode;
+  if (settings.centerOnPlayer != null) mapSettings.centerOnPlayer = settings.centerOnPlayer;
+  if (settings.zoomCache) {
+    if (!mapSettings.zoomCache) mapSettings.zoomCache = {};
+    Object.assign(mapSettings.zoomCache, settings.zoomCache);
+    // Cap at 50 entries
+    const keys = Object.keys(mapSettings.zoomCache);
+    if (keys.length > 50) {
+      for (const k of keys.slice(0, keys.length - 50)) {
+        delete mapSettings.zoomCache[k];
+      }
+    }
   }
   saveCurrentLayout();
 });

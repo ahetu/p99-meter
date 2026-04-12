@@ -1,0 +1,15 @@
+---
+description: Deployment workflow — always extract to local EQ directory after packaging
+alwaysApply: true
+---
+
+# Deploy Workflow
+
+After packaging a new version (`npm run dist`), always extract the zip to the local EverQuest directory so the user runs the latest build:
+
+```powershell
+if (Test-Path "z:\Everquest P99\p99-meter") { Remove-Item "z:\Everquest P99\p99-meter" -Recurse -Force }
+Expand-Archive -Path "z:\Everquest P99\AddOns\p99-meter\out\p99-meter-v<VERSION>.zip" -DestinationPath "z:\Everquest P99\" -Force
+```
+
+Do this automatically whenever you package and push a release — don't wait to be asked.

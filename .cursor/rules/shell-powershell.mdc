@@ -1,0 +1,24 @@
+---
+description: PowerShell shell conventions for this Windows workspace
+alwaysApply: true
+---
+
+# Shell is PowerShell
+
+This workspace runs on Windows with PowerShell. When using the Shell tool:
+
+- **No `&&`** to chain commands. Use `;` or make separate Shell calls.
+- **No heredoc** (`<<'EOF'`). Write multi-line strings with PowerShell syntax or pass commit messages as simple single-line `-m "..."` arguments.
+- **No `head`/`tail` unix commands.** Use `Select-Object -First N` / `-Last N`, or `Get-Content -Tail N`.
+- **No `cat`** — use the Read tool or `Get-Content`.
+- **No `grep`** — use the Grep tool or `Select-String`.
+
+Git commit example:
+
+```powershell
+git add -A
+git commit -m "Short commit message here"
+git push
+```
+
+Each command should be a separate Shell call, or joined with `;`.
