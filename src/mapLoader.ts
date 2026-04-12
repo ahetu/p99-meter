@@ -1,0 +1,215 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { parseMapData, ZoneMap } from './mapParser';
+
+/**
+ * Loads all Brewall map files for a zone by short name.
+ * Reads <zone>.txt (geometry) and <zone>_1.txt (labels) — _2 files are
+ * coordinate grids we don't need.
+ *
+ * Checks the maps/ folder next to the executable (packaged) or in the
+ * project root (dev).
+ */
+export function loadZoneMap(zone: string, appRoot: string): ZoneMap | null {
+  const mapsDir = resolveMapDir(appRoot);
+  if (!mapsDir) return null;
+
+  const lowerZone = zone.toLowerCase();
+  const baseFile = path.join(mapsDir, `${lowerZone}.txt`);
+  const labelsFile = path.join(mapsDir, `${lowerZone}_1.txt`);
+
+  let combined = '';
+
+  if (fs.existsSync(baseFile)) {
+    combined += fs.readFileSync(baseFile, 'utf-8') + '\n';
+  }
+  if (fs.existsSync(labelsFile)) {
+    combined += fs.readFileSync(labelsFile, 'utf-8') + '\n';
+  }
+
+  if (!combined.trim()) return null;
+
+  return parseMapData(combined);
+}
+
+/** Returns the list of available zone short names. */
+export function listAvailableZones(appRoot: string): string[] {
+  const mapsDir = resolveMapDir(appRoot);
+  if (!mapsDir) return [];
+  try {
+    return fs.readdirSync(mapsDir)
+      .filter(f => f.endsWith('.txt') && !f.includes('_'))
+      .map(f => f.replace('.txt', ''));
+  } catch {
+    return [];
+  }
+}
+
+function resolveMapDir(appRoot: string): string | null {
+  // In packaged app: maps/ is next to the exe directory
+  const candidates = [
+    path.join(appRoot, 'maps'),
+    path.join(path.dirname(appRoot), 'maps'),
+    path.resolve(__dirname, '..', '..', '..', '..', 'maps'),     // dev: project root
+    path.resolve(__dirname, '..', 'maps'),                        // dev fallback
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(dir)) return dir;
+  }
+  return null;
+}
+
+/**
+ * Map from "You have entered <ZoneName>." display name to zone short name.
+ * This covers P99 Classic/Kunark/Velious zones.
+ */
+const ZONE_NAME_MAP: Record<string, string> = {
+  'North Freeport': 'freportn',
+  'East Freeport': 'freporte',
+  'West Freeport': 'freportw',
+  'Greater Faydark': 'gfaydark',
+  'Lesser Faydark': 'lfaydark',
+  'Northern Plains of Karana': 'northkarana',
+  'Southern Plains of Karana': 'southkarana',
+  'Eastern Plains of Karana': 'eastkarana',
+  'Western Plains of Karana': 'qey2hh1',
+  'Surefall Glade': 'qrg',
+  'Qeynos Hills': 'qeytoqrg',
+  'South Qeynos': 'qeynos',
+  'North Qeynos': 'qeynos2',
+  'The Qeynos Aqueduct System': 'qcat',
+  'Befallen': 'befallen',
+  'Blackburrow': 'blackburrow',
+  'Butcherblock Mountains': 'butcher',
+  'Steamfont Mountains': 'steamfont',
+  'Ak\'Anon': 'akanon',
+  'Crushbone': 'crushbone',
+  'Castle Mistmoore': 'mistmoore',
+  'Unrest': 'unrest',
+  'Dagnor\'s Cauldron': 'cauldron',
+  'Estate of Unrest': 'unrest',
+  'Kithicor Forest': 'kithicor',
+  'Highpass Hold': 'highpass',
+  'High Keep': 'highkeep',
+  'East Commonlands': 'ecommons',
+  'West Commonlands': 'commons',
+  'Nektulos Forest': 'nektulos',
+  'Lavastorm Mountains': 'lavastorm',
+  'Najena': 'najena',
+  'Solusek\'s Eye': 'soldunga',
+  'Nagafen\'s Lair': 'soldungb',
+  'Temple of Solusek Ro': 'soltemple',
+  'Neriak Foreign Quarter': 'neriaka',
+  'Neriak Commons': 'neriakb',
+  'Neriak Third Gate': 'neriakc',
+  'Innothule Swamp': 'innothule',
+  'The Feerrott': 'feerrott',
+  'Cazic-Thule': 'cazicthule',
+  'Oggok': 'oggok',
+  'Grobb': 'grobb',
+  'Upper Guk': 'guktop',
+  'Lower Guk': 'gukbottom',
+  'Misty Thicket': 'misty',
+  'Rivervale': 'rivervale',
+  'Runnyeye Citadel': 'runnyeye',
+  'Paineel': 'paineel',
+  'The Hole': 'hole',
+  'Erudin': 'erudnext',
+  'Erudin Palace': 'erudnint',
+  'Erud\'s Crossing': 'erudsxing',
+  'Toxxulia Forest': 'tox',
+  'Stonebrunt Mountains': 'stonebrunt',
+  'The Warrens': 'warrens',
+  'Kerra Isle': 'kerraridge',
+  'Halas': 'halas',
+  'Everfrost Peaks': 'everfrost',
+  'Permafrost Keep': 'permafrost',
+  'North Desert of Ro': 'nro',
+  'South Desert of Ro': 'sro',
+  'Oasis of Marr': 'oasis',
+  'Ocean of Tears': 'oot',
+  'Kedge Keep': 'kedge',
+  'Arena': 'arena',
+  'Plane of Fear': 'fearplane',
+  'Plane of Hate': 'hateplane',
+  'Plane of Sky': 'airplane',
+  'Lair of the Splitpaw': 'paw',
+  'Rathe Mountains': 'rathemtn',
+  'Lake Rathetear': 'lakerathe',
+  'Felwithe': 'felwithea',
+  'Northern Felwithe': 'felwithea',
+  'Southern Felwithe': 'felwitheb',
+  'Kaladim': 'kaladima',
+  'North Kaladim': 'kaladima',
+  'South Kaladim': 'kaladimb',
+  'Cabilis East': 'cabeast',
+  'Cabilis West': 'cabwest',
+  'East Cabilis': 'cabeast',
+  'West Cabilis': 'cabwest',
+
+  // Kunark
+  'The Burning Wood': 'burningwood',
+  'Howling Stones': 'charasis',
+  'Chardok': 'chardok',
+  'City of Mist': 'citymist',
+  'Dreadlands': 'dreadlands',
+  'Mines of Droga': 'droga',
+  'Emerald Jungle': 'emeraldjungle',
+  'Field of Bone': 'fieldofbone',
+  'Firiona Vie': 'firiona',
+  'Frontier Mountains': 'frontiermtns',
+  'Kaesora': 'kaesora',
+  'Karnor\'s Castle': 'karnor',
+  'Lake of Ill Omen': 'lakeofillomen',
+  'Mines of Nurga': 'nurga',
+  'The Overthere': 'overthere',
+  'Old Sebilis': 'sebilis',
+  'Skyfire Mountains': 'skyfire',
+  'Swamp of No Hope': 'swampofnohope',
+  'Timorous Deep': 'timorous',
+  'Trakanon\'s Teeth': 'trakanon',
+  'Veeshan\'s Peak': 'veeshan',
+  'The Wakening Land': 'wakening',
+  'Warsliks Wood': 'warslikswood',
+  'Dalnir': 'dalnir',
+
+  // Velious
+  'Cobalt Scar': 'cobaltscar',
+  'Crystal Caverns': 'crystal',
+  'Eastern Wastes': 'eastwastes',
+  'Tower of Frozen Shadow': 'frozenshadow',
+  'Great Divide': 'greatdivide',
+  'Plane of Growth': 'growthplane',
+  'Iceclad Ocean': 'iceclad',
+  'Kael Drakkel': 'kael',
+  'Plane of Mischief': 'mischiefplane',
+  'Dragon Necropolis': 'necropolis',
+  'Siren\'s Grotto': 'sirens',
+  'Skyshrine': 'skyshrine',
+  'Sleeper\'s Tomb': 'sleeper',
+  'Temple of Veeshan': 'templeveeshan',
+  'Thurgadin': 'thurgadina',
+  'Icewell Keep': 'thurgadinb',
+  'Velketor\'s Labyrinth': 'velketor',
+  'Western Wastes': 'westwastes',
+};
+
+/** Resolve a display zone name (from "You have entered X." or /who summary) to a map file short name. */
+export function resolveZoneShortName(displayName: string): string {
+  // /who uses "The Plane of Hate" while zone entry uses "Plane of Hate"
+  const normalized = displayName.replace(/^The /i, '');
+
+  // Direct lookup (try both original and stripped-The forms)
+  if (ZONE_NAME_MAP[displayName]) return ZONE_NAME_MAP[displayName];
+  if (ZONE_NAME_MAP[normalized]) return ZONE_NAME_MAP[normalized];
+
+  // Try case-insensitive
+  const lower = normalized.toLowerCase();
+  for (const [key, val] of Object.entries(ZONE_NAME_MAP)) {
+    if (key.toLowerCase() === lower) return val;
+  }
+
+  // Fallback: strip spaces, lowercase — might match short name directly
+  const stripped = lower.replace(/[^a-z0-9]/g, '');
+  return stripped;
+}

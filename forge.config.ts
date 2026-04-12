@@ -72,6 +72,16 @@ const config: ForgeConfig = {
           console.warn(`[forge hook] WARNING: ${file} not found at ${src}`);
         }
       }
+      // Bundle Brewall map files
+      const mapsSrc = path.join(__dirname, 'maps');
+      const mapsDest = path.join(outDir, 'maps');
+      if (fs.existsSync(mapsSrc)) {
+        copyDirSync(mapsSrc, mapsDest);
+        const count = fs.readdirSync(mapsDest).length;
+        console.log(`[forge hook] Copied ${count} map files into package`);
+      } else {
+        console.warn('[forge hook] WARNING: maps/ directory not found');
+      }
     },
   },
   makers: [
@@ -102,6 +112,14 @@ const config: ForgeConfig = {
             name: 'tooltip_window',
             preload: {
               js: './src/tooltipPreload.ts',
+            },
+          },
+          {
+            html: './src/map.html',
+            js: './src/mapRenderer.tsx',
+            name: 'map_window',
+            preload: {
+              js: './src/mapPreload.ts',
             },
           },
         ],

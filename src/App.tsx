@@ -6,6 +6,7 @@ import { useCombatTracker } from './useCombatTracker';
 function App() {
   const [attached, setAttached] = useState(false);
   const [character, setCharacter] = useState('');
+  const [mapVisible, setMapVisible] = useState(false);
   const {
     processEvents, reset, getDisplayData, seedClassDb, seedSpellDb, seedLandingMap,
     viewMode, setViewMode, fightIdx, setFightIdx, evtCount,
@@ -32,6 +33,10 @@ function App() {
 
   const onTooltipHide = useCallback(() => {
     window.electronAPI.hideTooltip();
+  }, []);
+
+  const onToggleMap = useCallback(() => {
+    window.electronAPI.toggleMap();
   }, []);
 
   const processRef = useRef(processEvents);
@@ -109,6 +114,7 @@ function App() {
     window.electronAPI.onClassDb((db) => seedClassDbRef.current(db));
     window.electronAPI.onSpellDb((db) => seedSpellDbRef.current(db));
     window.electronAPI.onLandingMap((map) => seedLandingMapRef.current(map));
+    window.electronAPI.onMapVisibility((visible) => setMapVisible(visible));
     console.log('[meter] Sending requestStatus()');
     window.electronAPI.requestStatus();
   }, []);
@@ -142,6 +148,8 @@ function App() {
         onResetSession={resetSession}
         onTooltipShow={onTooltipShow}
         onTooltipHide={onTooltipHide}
+        mapVisible={mapVisible}
+        onToggleMap={onToggleMap}
       />
     </div>
   );

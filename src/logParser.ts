@@ -22,7 +22,8 @@ export type CombatEventType =
   | 'who_result'         // "[55 Wizard] Soandso (High Elf) <Guild>"
   | 'buff_land'          // Spell-effect landing messages that imply caster class
   | 'discipline'         // Class-specific discipline activations
-  | 'pet_melee';         // "Soandso's pet hits Mob for X damage"
+  | 'pet_melee'          // "Soandso's pet hits Mob for X damage"
+  | 'player_location';   // "Your Location is X, Y, Z" (/loc output)
 
 export interface CombatEvent {
   timestamp: number;
@@ -31,12 +32,20 @@ export interface CombatEvent {
   target: string;
   amount: number;
   skill: string;
+  location?: { x: number; y: number; z: number };
 }
 
 import { TIMESTAMP_RE } from './constants';
 
 const MELEE_VERBS_1P = 'crush|hit|slash|pierce|bash|kick|punch|backstab|maul|claw|gore|strike|smash|bite|slam|frenzy';
 const MELEE_VERBS_3P = 'crushes|hits|slashes|pierces|bashes|kicks|punches|backstabs|mauls|claws|gores|strikes|smashes|bites|slams|frenzies';
+
+const VERB_3P_TO_1P: Record<string, string> = {
+  crushes: 'crush', hits: 'hit', slashes: 'slash', pierces: 'pierce',
+  bashes: 'bash', kicks: 'kick', punches: 'punch', backstabs: 'backstab',
+  mauls: 'maul', claws: 'claw', gores: 'gore', strikes: 'strike',
+  smashes: 'smash', bites: 'bite', slams: 'slam', frenzies: 'frenzy',
+};
 
 const YOU_MELEE_RE = new RegExp(
   `^You (${MELEE_VERBS_1P}) (.+?) for (\\d+) points? of damage\\.$`
@@ -76,7 +85,9 @@ const YOU_GROUP_JOIN_RE = /^You have joined the group\.$/;
 const YOU_GROUP_LEAVE_RE = /^You have left the group\.$/;
 const GROUP_CHAT_RE = /^(.+?) tells the group, '.*'$/;
 const ZONE_RE = /^You have entered (.+?)\.$/;
+const WHO_ZONE_RE = /^There (?:are|is) \d+ players? in (.+?)\.$/;
 const LOGIN_RE = /^Welcome to EverQuest!$/;
+const LOC_RE = /^Your Location is (-?[\d.]+), (-?[\d.]+), (-?[\d.]+)$/;
 
 // /who output: "[55 Wizard] Soandso (Race)" or "[ANONYMOUS] Soandso"
 // Require (Race) after the name to avoid false positives on other bracketed messages
@@ -159,13 +170,13 @@ export function parseLine(line: string): CombatEvent | null {
 
   // Pet melee (check before general OTHER_MELEE to catch "X`s pet hits")
   m = PET_MELEE_RE.exec(msg);
-  if (m) return { timestamp, type: 'pet_melee', source: m[1], target: m[3], amount: parseInt(m[4]), skill: m[2] };
+  if (m) return { timestamp, type: 'pet_melee', source: m[1], target: m[3], amount: parseInt(m[4]), skill: VERB_3P_TO_1P[m[2]] || m[2] };
 
   m = PET_KICK_RE.exec(msg);
-  if (m) return { timestamp, type: 'pet_melee', source: m[1], target: m[3], amount: parseInt(m[4]), skill: m[2] };
+  if (m) return { timestamp, type: 'pet_melee', source: m[1], target: m[3], amount: parseInt(m[4]), skill: VERB_3P_TO_1P[m[2]] || m[2] };
 
   m = OTHER_MELEE_RE.exec(msg);
-  if (m) return { timestamp, type: 'melee_damage', source: m[1], target: m[3], amount: parseInt(m[4]), skill: m[2] };
+  if (m) return { timestamp, type: 'melee_damage', source: m[1], target: m[3], amount: parseInt(m[4]), skill: VERB_3P_TO_1P[m[2]] || m[2] };
 
   // Non-melee (spell) damage — no source
   m = NONMELEE_RE.exec(msg);
@@ -256,9 +267,22 @@ export function parseLine(line: string): CombatEvent | null {
   // Login
   if (LOGIN_RE.test(msg)) return { timestamp, type: 'login', source: 'You', target: '', amount: 0, skill: '' };
 
+  // Player location (/loc)
+  m = LOC_RE.exec(msg);
+  if (m) return {
+    timestamp, type: 'player_location', source: 'You', target: '', amount: 0, skill: '',
+    location: { x: parseFloat(m[1]), y: parseFloat(m[2]), z: parseFloat(m[3]) },
+  };
+
   // Zone change
   m = ZONE_RE.exec(msg);
   if (m) return { timestamp, type: 'zone_change', source: 'You', target: m[1], amount: 0, skill: '' };
+
+  // /who zone summary — "There are 33 players in The Plane of Hate."
+  m = WHO_ZONE_RE.exec(msg);
+  if (m && m[1] !== 'EverQuest') {
+    return { timestamp, type: 'zone_change', source: 'who', target: m[1], amount: 0, skill: '' };
+  }
 
   // /who results — "[55 Wizard] Soandso (High Elf) <Guild>"
   m = WHO_RE.exec(msg);

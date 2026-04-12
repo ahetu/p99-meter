@@ -31,7 +31,7 @@ describe('logParser — melee damage', () => {
     expect(ev!.source).toBe('Soandso');
     expect(ev!.target).toBe('a rat');
     expect(ev!.amount).toBe(10);
-    expect(ev!.skill).toBe('hits');
+    expect(ev!.skill).toBe('hit');
   });
 
   it('parses NPC melee with multi-word name', () => {
@@ -56,7 +56,7 @@ describe('logParser — pet melee', () => {
     expect(ev!.source).toBe('Soandso');
     expect(ev!.target).toBe('a gnoll');
     expect(ev!.amount).toBe(25);
-    expect(ev!.skill).toBe('hits');
+    expect(ev!.skill).toBe('hit');
   });
 
   it('parses warder melee', () => {

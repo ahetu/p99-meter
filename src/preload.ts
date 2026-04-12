@@ -8,8 +8,10 @@ export interface ElectronAPI {
   onClassDb: (cb: (db: Record<string, string>) => void) => void;
   onSpellDb: (cb: (db: Record<string, { baseDmg: number; maxDmg: number; castMs: number; calc: number; minLevel: number }>) => void) => void;
   onLandingMap: (cb: (map: Record<string, Array<{ spellName: string; baseDmg: number; maxDmg: number; castMs: number; calc: number; minLevel: number }>>) => void) => void;
+  onMapVisibility: (cb: (visible: boolean) => void) => void;
   requestStatus: () => void;
   saveClass: (name: string, cls: string) => void;
+  toggleMap: () => void;
   moveWindow: (x: number, y: number) => void;
   dragStart: (anchorX: number, anchorY: number, screenX: number, screenY: number) => void;
   dragEnd: () => void;
@@ -45,11 +47,17 @@ const api: ElectronAPI = {
   onLandingMap: (cb: (map: Record<string, Array<{ spellName: string; baseDmg: number; maxDmg: number; castMs: number; calc: number; minLevel: number }>>) => void) => {
     singleListener('landing-map', cb);
   },
+  onMapVisibility: (cb: (visible: boolean) => void) => {
+    singleListener('map-visibility', cb);
+  },
   requestStatus: () => {
     ipcRenderer.send('request-status');
   },
   saveClass: (name: string, cls: string) => {
     ipcRenderer.send('save-class', { name, cls });
+  },
+  toggleMap: () => {
+    ipcRenderer.send('toggle-map');
   },
   moveWindow: (x: number, y: number) => {
     ipcRenderer.send('move-window', x, y);

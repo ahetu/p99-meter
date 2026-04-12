@@ -64,11 +64,15 @@ import * as fs from 'fs';
 let LogWatcher: typeof import('./logWatcher').LogWatcher;
 let extractCharacterName: typeof import('./logParser').extractCharacterName;
 let loadAllSpellData: typeof import('./spellDatabase').loadAllSpellData;
+let loadZoneMap: typeof import('./mapLoader').loadZoneMap;
+let resolveZoneShortName: typeof import('./mapLoader').resolveZoneShortName;
 try {
   LogWatcher = require('./logWatcher').LogWatcher;
   extractCharacterName = require('./logParser').extractCharacterName;
   loadAllSpellData = require('./spellDatabase').loadAllSpellData;
-  logInfo('Local modules loaded (logWatcher, logParser, spellDatabase)');
+  loadZoneMap = require('./mapLoader').loadZoneMap;
+  resolveZoneShortName = require('./mapLoader').resolveZoneShortName;
+  logInfo('Local modules loaded (logWatcher, logParser, spellDatabase, mapLoader)');
 } catch (err: any) {
   logError('FATAL: Failed to load local modules', { message: err.message, stack: err.stack });
   process.exit(1);
@@ -78,6 +82,8 @@ declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 declare const TOOLTIP_WINDOW_WEBPACK_ENTRY: string;
 declare const TOOLTIP_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+declare const MAP_WINDOW_WEBPACK_ENTRY: string;
+declare const MAP_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 try {
   if (require('electron-squirrel-startup')) {
@@ -104,9 +110,12 @@ if (!gotLock) {
   });
 }
 
-const EQ_DIR = app.isPackaged
-  ? path.resolve(path.dirname(app.getPath('exe')), '..')
+const APP_DIR = app.isPackaged
+  ? path.dirname(app.getPath('exe'))
   : path.resolve(__dirname, '..', '..', '..', '..');
+const EQ_DIR = app.isPackaged
+  ? path.resolve(APP_DIR, '..')
+  : APP_DIR;
 const LOGS_DIR = path.join(EQ_DIR, 'Logs');
 
 logInfo('Paths resolved', {
@@ -137,6 +146,15 @@ let spellDb: Record<string, import('./spellDatabase').SpellInfo> = {};
 let landingMap: Record<string, import('./spellDatabase').LandingSpellInfo[]> = {};
 let landingSuffixes: string[] = [];
 let tooltipWindow: import('electron').BrowserWindow | null = null;
+let mapWindow: import('electron').BrowserWindow | null = null;
+let mapVisible = false;
+let currentMapZone = '';
+let currentMapZoneDisplay = '';
+
+const DEFAULT_MAP_SIZE = { w: 450, h: 450 };
+const DEFAULT_MAP_OFFSET = { x: -470, y: 20 };
+let mapOffset = { ...DEFAULT_MAP_OFFSET };
+let mapSize = { ...DEFAULT_MAP_SIZE };
 
 function clampSizeToDisplays(w: number, h: number): { w: number; h: number } {
   try {
@@ -164,6 +182,9 @@ function loadLayoutFromDisk() {
       logDebug('Layout loaded from disk', data);
       if (data.x != null && data.y != null) meterOffset = { x: data.x, y: data.y };
       if (data.w != null && data.h != null) meterSize = clampSizeToDisplays(data.w, data.h);
+      if (data.mapX != null && data.mapY != null) mapOffset = { x: data.mapX, y: data.mapY };
+      if (data.mapW != null && data.mapH != null) mapSize = clampSizeToDisplays(data.mapW, data.mapH);
+      if (data.mapVisible != null) mapVisible = data.mapVisible;
       return;
     }
   } catch (err: any) {
@@ -186,8 +207,20 @@ function saveCurrentLayout() {
     data.y = meterOffset.y;
     data.w = w;
     data.h = h;
+    // Save map window layout
+    if (mapWindow && !mapWindow.isDestroyed()) {
+      const [mx, my] = mapWindow.getPosition();
+      const [mw, mh] = mapWindow.getSize();
+      mapOffset = { x: mx - lastEqBounds.x, y: my - lastEqBounds.y };
+      mapSize = { w: mw, h: mh };
+    }
+    data.mapX = mapOffset.x;
+    data.mapY = mapOffset.y;
+    data.mapW = mapSize.w;
+    data.mapH = mapSize.h;
+    data.mapVisible = mapVisible;
     fs.writeFileSync(LAYOUT_FILE, JSON.stringify(data));
-    logDebug('Layout saved', { x: data.x, y: data.y, w, h });
+    logDebug('Layout saved', { x: data.x, y: data.y, w, h, mapVisible });
   } catch (err: any) {
     logError('Failed to save layout', { error: err.message });
   }
@@ -477,6 +510,8 @@ function createWindow() {
     mainWindow = null;
     if (tooltipWindow && !tooltipWindow.isDestroyed()) tooltipWindow.close();
     tooltipWindow = null;
+    if (mapWindow && !mapWindow.isDestroyed()) mapWindow.close();
+    mapWindow = null;
     if (trackingWindow && !trackingWindow.isDestroyed()) trackingWindow.close();
   });
 
@@ -506,6 +541,50 @@ function createWindow() {
     logInfo('Tooltip window created');
   } catch (err: any) {
     logError('Failed to create tooltip window', { message: err.message, stack: err.stack });
+  }
+
+  // ── 2c. Map window — separate overlay for zone map ──
+  try {
+    const mapInitPos = clampToVisibleScreen(
+      lastEqBounds.x + mapOffset.x,
+      lastEqBounds.y + mapOffset.y,
+      mapSize.w,
+      mapSize.h,
+    );
+    mapWindow = new BrowserWindow({
+      width: mapSize.w,
+      height: mapSize.h,
+      x: mapInitPos.x,
+      y: mapInitPos.y,
+      transparent: true,
+      frame: false,
+      thickFrame: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      resizable: false,
+      show: false,
+      webPreferences: {
+        preload: MAP_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      },
+    });
+    mapWindow.setAlwaysOnTop(true, 'screen-saver');
+    mapWindow.loadURL(MAP_WINDOW_WEBPACK_ENTRY);
+    logInfo('Map window created');
+
+    mapWindow.webContents.on('did-finish-load', () => {
+      logInfo('Map renderer finished loading');
+      if (currentMapZone) {
+        loadAndSendMapData(currentMapZone);
+        sendToMap('map-zone-changed', currentMapZoneDisplay || currentMapZone);
+      }
+    });
+
+    if (mapVisible) {
+      mapWindow.showInactive();
+    }
+  } catch (err: any) {
+    logError('Failed to create map window', { message: err.message, stack: err.stack });
   }
 
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -573,6 +652,7 @@ function createWindow() {
   OverlayController.events.on('moveresize', (ev: { x: number; y: number; width: number; height: number }) => {
     lastEqBounds = { ...ev };
     repositionMeterToEQ();
+    repositionMapToEQ();
   });
 
   logInfo('Calling OverlayController.attachByTitle("EverQuest") on tracking window...');
@@ -581,6 +661,98 @@ function createWindow() {
     logInfo('OverlayController.attachByTitle succeeded');
   } catch (err: any) {
     logError('OverlayController.attachByTitle failed', { message: err.message, stack: err.stack });
+  }
+}
+
+/**
+ * Scan the last portion of a log file for the most recent zone message.
+ * Returns the display name (e.g. "Greater Faydark") or null.
+ */
+/**
+ * Scan the log file backwards in chunks for the most recent zone message.
+ * Starts at 2MB from end and doubles the window (up to 32MB) until found.
+ */
+function findLastZoneInLog(logFilePath: string): string | null {
+  try {
+    const stat = fs.statSync(logFilePath);
+    const zoneEntryRe = /\] You have entered (.+?)\./g;
+    const whoZoneRe = /\] There (?:are|is) \d+ players? in (.+?)\./g;
+    let scanSize = 2 * 1024 * 1024;
+    const maxScan = 32 * 1024 * 1024;
+
+    while (scanSize <= maxScan) {
+      const start = Math.max(0, stat.size - scanSize);
+      const readLen = Math.min(scanSize, stat.size);
+      const fd = fs.openSync(logFilePath, 'r');
+      const buf = Buffer.alloc(readLen);
+      fs.readSync(fd, buf, 0, readLen, start);
+      fs.closeSync(fd);
+      const text = buf.toString('utf-8');
+
+      // Find the latest zone indicator from either source
+      let lastMatch: string | null = null;
+      let lastIndex = -1;
+      let m: RegExpExecArray | null;
+
+      while ((m = zoneEntryRe.exec(text)) !== null) {
+        lastMatch = m[1];
+        lastIndex = m.index;
+      }
+      while ((m = whoZoneRe.exec(text)) !== null) {
+        if (m[1] !== 'EverQuest' && m.index > lastIndex) {
+          lastMatch = m[1];
+          lastIndex = m.index;
+        }
+      }
+
+      if (lastMatch) return lastMatch;
+      if (start === 0) break;
+      scanSize *= 2;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function sendToMap(channel: string, data: any) {
+  if (mapWindow && !mapWindow.isDestroyed()) {
+    mapWindow.webContents.send(channel, data);
+  }
+}
+
+function handleZoneChange(displayName: string) {
+  const shortName = resolveZoneShortName(displayName);
+  if (shortName === currentMapZone) return;
+  currentMapZone = shortName;
+  currentMapZoneDisplay = displayName;
+  logInfo('Map zone change', { displayName, shortName });
+  sendToMap('map-zone-changed', displayName);
+  loadAndSendMapData(shortName);
+}
+
+function loadAndSendMapData(shortName: string) {
+  try {
+    const mapData = loadZoneMap(shortName, APP_DIR);
+    if (mapData) {
+      sendToMap('map-data', mapData);
+      logInfo('Map data sent', { zone: shortName, lines: mapData.lines.length, labels: mapData.labels.length });
+    } else {
+      logWarn('No map data found for zone', { zone: shortName });
+    }
+  } catch (err: any) {
+    logError('Failed to load map data', { zone: shortName, error: err.message });
+  }
+}
+
+function repositionMapToEQ() {
+  if (!mapWindow || mapWindow.isDestroyed()) return;
+  try {
+    const raw = { x: lastEqBounds.x + mapOffset.x, y: lastEqBounds.y + mapOffset.y };
+    const clamped = clampToVisibleScreen(raw.x, raw.y, mapSize.w, mapSize.h);
+    mapWindow.setBounds({ x: clamped.x, y: clamped.y, width: mapSize.w, height: mapSize.h });
+  } catch (err: any) {
+    logError('repositionMapToEQ native error', { message: err.message });
   }
 }
 
@@ -609,6 +781,14 @@ function startLogWatcher() {
       logDebug('Sending combat events to renderer', { count: events.length });
       mainWindow.webContents.send('combat-events', events);
     }
+    // Forward location and zone events to map window
+    for (const evt of events) {
+      if (evt.type === 'player_location' && evt.location) {
+        sendToMap('player-location', evt.location);
+      } else if (evt.type === 'zone_change' && evt.target) {
+        handleZoneChange(evt.target);
+      }
+    }
   });
   if (landingSuffixes.length > 0) {
     logWatcher.setLandingSuffixes(landingSuffixes);
@@ -616,6 +796,15 @@ function startLogWatcher() {
   logWatcher.setOnIdle(() => checkForLogSwitch());
   logWatcher.start();
   logInfo('Log watcher started and polling');
+
+  // Detect current zone from log history so the map works without re-zoning
+  if (!currentMapZone) {
+    const lastZone = findLastZoneInLog(logFile.path);
+    if (lastZone) {
+      logInfo('Detected zone from log history', { zone: lastZone });
+      handleZoneChange(lastZone);
+    }
+  }
 }
 
 function checkForLogSwitch() {
@@ -730,6 +919,7 @@ if (gotLock) {
   app.on('before-quit', () => {
     stopLogWatcher();
     stopResizePolling();
+    stopMapResizePolling();
     if (classDbSaveTimer) { clearTimeout(classDbSaveTimer); classDbSaveTimer = null; }
     classDbDirty = true;
     saveClassDb();
@@ -883,6 +1073,7 @@ ipcMain.on('request-status', () => {
   if (Object.keys(landingMap).length > 0) {
     mainWindow.webContents.send('landing-map', landingMap);
   }
+  mainWindow.webContents.send('map-visibility', mapVisible);
 });
 
 // ── IPC: Tooltip (separate window) ──
@@ -952,8 +1143,98 @@ ipcMain.on('save-class', (_, data: { name: string; cls: string }) => {
     classDb[data.name] = { cls: data.cls, seen: now };
     scheduleClassDbSave();
   } else if (now - existing.seen > 60_000) {
-    // Same class, but refresh the timestamp (at most once per minute)
     existing.seen = now;
     scheduleClassDbSave();
   }
+});
+
+// ── IPC: Map window toggle ──
+ipcMain.on('toggle-map', () => {
+  if (!mapWindow || mapWindow.isDestroyed()) return;
+  mapVisible = !mapVisible;
+  logInfo('Map toggle', { visible: mapVisible });
+  if (mapVisible) {
+    repositionMapToEQ();
+    mapWindow.showInactive();
+    // If we already know the zone, send the map data
+    if (currentMapZone) {
+      loadAndSendMapData(currentMapZone);
+    }
+  } else {
+    mapWindow.hide();
+  }
+  // Notify the meter renderer about visibility state
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('map-visibility', mapVisible);
+  }
+  saveCurrentLayout();
+});
+
+// ── IPC: Map window drag ──
+let mapDragFrozenSize: { w: number; h: number } | null = null;
+
+ipcMain.on('map-move-window', (_, x: number, y: number) => {
+  if (mapWindow && !mapWindow.isDestroyed()) {
+    try {
+      const size = mapDragFrozenSize ?? mapSize;
+      const clamped = clampToVisibleScreen(Math.round(x), Math.round(y), size.w, size.h);
+      mapWindow.setBounds({ x: clamped.x, y: clamped.y, width: size.w, height: size.h });
+    } catch (err: any) {
+      logError('map-move-window native error', { message: err.message });
+    }
+  }
+});
+
+ipcMain.on('map-drag-start', (_, data: { anchorX: number; anchorY: number; screenX: number; screenY: number }) => {
+  if (!mapWindow || mapWindow.isDestroyed()) return;
+  const [w, h] = mapWindow.getSize();
+  mapDragFrozenSize = { w, h };
+});
+
+ipcMain.on('map-drag-end', () => {
+  mapDragFrozenSize = null;
+  saveCurrentLayout();
+});
+
+// ── IPC: Map window resize ──
+let mapResizeInterval: ReturnType<typeof setInterval> | null = null;
+let mapResizeStart: { cursorX: number; cursorY: number; w: number; h: number } | null = null;
+
+function stopMapResizePolling() {
+  if (mapResizeInterval) {
+    clearInterval(mapResizeInterval);
+    mapResizeInterval = null;
+  }
+  if (mapResizeStart) {
+    mapResizeStart = null;
+    saveCurrentLayout();
+  }
+}
+
+ipcMain.on('map-resize-start', (_, data: { screenX: number; screenY: number }) => {
+  if (!mapWindow || mapWindow.isDestroyed()) return;
+  const [w, h] = mapWindow.getSize();
+  mapResizeStart = { cursorX: data.screenX, cursorY: data.screenY, w, h };
+  if (mapResizeInterval) clearInterval(mapResizeInterval);
+  mapResizeInterval = setInterval(() => {
+    if (!mapWindow || mapWindow.isDestroyed() || !mapResizeStart) {
+      stopMapResizePolling();
+      return;
+    }
+    const cursor = screen.getCursorScreenPoint();
+    const dx = cursor.x - mapResizeStart.cursorX;
+    const dy = cursor.y - mapResizeStart.cursorY;
+    const newW = Math.max(200, mapResizeStart.w + dx);
+    const newH = Math.max(150, mapResizeStart.h + dy);
+    const [x, y] = mapWindow.getPosition();
+    try {
+      mapWindow.setBounds({ x, y, width: Math.round(newW), height: Math.round(newH) });
+    } catch (err: any) {
+      logError('map resize setBounds error', { message: err.message });
+    }
+  }, 16);
+});
+
+ipcMain.on('map-resize-end', () => {
+  stopMapResizePolling();
 });

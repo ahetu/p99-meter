@@ -35,6 +35,8 @@ const F_BASE_START = 20;   // Base values for effect slots 1-12 (fields 20-31)
 const F_MAX_START = 44;    // Max values for effect slots 1-12 (fields 44-55)
 const F_CALC_START = 70;   // Calc formulas for effect slots 1-12 (fields 70-81)
 const EFFECT_SLOT_COUNT = 12;
+const F_ATTRIB_START = 86;   // SPA (spell effect type) for effect slots 1-12 (fields 86-97)
+const SPA_HP = 0;            // SPA 0 = Current HP change; negative base = damage
 const F_CLASS_START = 104;
 const F_CLASS_COUNT = 16;
 const MIN_FIELDS = 120;
@@ -100,13 +102,17 @@ function parseSpellRow(f: string[]): ParsedSpellRow | null {
   const castMs = parseInt(f[F_CAST_TIME]) || 0;
   const landingMsg = (f[F_LANDING_MSG] || '').trim();
 
-  // Scan all 12 effect slots for the first damage (negative base) value
+  // Scan all 12 effect slots for the first HP-damage slot.
+  // Only SPA 0 (Current HP) with a negative base is actual damage.
+  // Other SPAs use negative values for non-damage effects (e.g. SPA 99 = Root
+  // with base -10000 for movement rate, SPA 3 = Snare with base -40).
   let baseVal = 0;
   let maxVal = 0;
   let calcVal = 0;
   for (let slot = 0; slot < EFFECT_SLOT_COUNT; slot++) {
     const slotBase = parseInt(f[F_BASE_START + slot]) || 0;
-    if (slotBase < 0) {
+    const slotAttrib = parseInt(f[F_ATTRIB_START + slot]) || 0;
+    if (slotBase < 0 && slotAttrib === SPA_HP) {
       baseVal = slotBase;
       maxVal = parseInt(f[F_MAX_START + slot]) || 0;
       calcVal = parseInt(f[F_CALC_START + slot]) || 0;

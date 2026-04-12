@@ -36,6 +36,8 @@ interface Props {
   onResetSession?: () => void;
   onTooltipShow?: (player: DisplayPlayer, viewMode: ViewMode, barTop: number, barBottom: number) => void;
   onTooltipHide?: () => void;
+  mapVisible?: boolean;
+  onToggleMap?: () => void;
 }
 
 interface ContextMenuState {
@@ -75,6 +77,7 @@ export default function DamageMeter(props: Props) {
     showMode, onShowModeChange,
     onAssignPetOwner, getSuggestedPetOwners, onResetSession,
     onTooltipShow, onTooltipHide,
+    mapVisible, onToggleMap,
   } = props;
   const [hoveredName, setHoveredName] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null);
@@ -204,6 +207,23 @@ export default function DamageMeter(props: Props) {
         </div>
 
         <span style={{ flex: 1 }} />
+
+        {onToggleMap && (
+          <button
+            onClick={onToggleMap}
+            title={mapVisible ? 'Hide map' : 'Show map'}
+            style={{
+              background: mapVisible ? 'rgba(61,235,52,0.12)' : 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: mapVisible ? '#3deb34' : '#666',
+              fontSize: 12,
+              padding: '0 3px',
+              transition: 'color 0.2s',
+              flexShrink: 0,
+            }}
+          >⊞</button>
+        )}
 
         {players.length > 0 && (
           <button
