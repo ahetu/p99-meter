@@ -449,6 +449,7 @@ export function useCombatTracker(playerName: string) {
 
       // ── /who results → definitive class + level (highest confidence) ──
       if (ev.type === 'who_result') {
+        if (ev.source) corr.addZonePlayer(ev.source);
         if (ev.skill && ev.skill !== 'ANONYMOUS') {
           const cls = detectClassFromWho(ev.skill);
           console.log('[WHO]', ev.source, ev.skill, '→', cls);
@@ -678,8 +679,9 @@ export function useCombatTracker(playerName: string) {
           const e = getEntity(fight, tgt);
           e.damageTaken += ev.amount;
           updateColor(tgt, clsMap[tgt] || null);
-        } else if (corr.isKnownPlayer(src)) {
-          // Known group member hitting something — credit them, target is mob
+          if (!isLikelyNPC(tgt)) corr.addZonePlayer(tgt);
+        } else if (corr.isKnownOrZonePlayer(src)) {
+          // Known group/zone player hitting something — credit them, target is mob
           if (!isMob(fight, tgt)) addMob(fight, tgt);
           creditDamage(fight, src, tgt, ev.amount, skillLabel, false, false, clsMap);
           updateColor(src, clsMap[src] || null);
@@ -714,11 +716,13 @@ export function useCombatTracker(playerName: string) {
           addMob(fight, tgt);
           creditDamage(fight, src, tgt, ev.amount, skillLabel, false, false, clsMap);
           updateColor(src, clsMap[src] || null);
+          corr.addZonePlayer(src);
         } else if (!isLikelyNPC(src) && (isMob(fight, tgt) || isGlobalMob(tgt))) {
           // Player-looking name hitting a known mob (non-NPC-named mob)
           addMob(fight, tgt);
           creditDamage(fight, src, tgt, ev.amount, skillLabel, false, false, clsMap);
           updateColor(src, clsMap[src] || null);
+          corr.addZonePlayer(src);
         } else if (isLikelyNPC(src)) {
           // NPC source — check if it's a charmed pet
           const charmOwner = corr.getCharmOwner(src, ev.timestamp);
@@ -740,7 +744,7 @@ export function useCombatTracker(playerName: string) {
       else if (ev.type === 'spell_damage') {
         const attributed = corr.attributeSpellDamage(ev);
         const attrSource = attributed.source;
-        const targetIsMob = isMob(fight, tgt) || !corr.isKnownPlayer(tgt);
+        const targetIsMob = isMob(fight, tgt) || !corr.isKnownOrZonePlayer(tgt);
 
         if (targetIsMob) {
           addMob(fight, tgt);
@@ -773,6 +777,13 @@ export function useCombatTracker(playerName: string) {
           const e = getEntity(fight, src);
           e.misses++;
           updateColor(src, clsMap[src] || null);
+          corr.addZonePlayer(src);
+        } else if (!isLikelyNPC(src) && (isMob(fight, tgt) || isGlobalMob(tgt))) {
+          addMob(fight, tgt);
+          const e = getEntity(fight, src);
+          e.misses++;
+          updateColor(src, clsMap[src] || null);
+          corr.addZonePlayer(src);
         }
         dirty = true;
       }

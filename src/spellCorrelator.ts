@@ -12,7 +12,8 @@ import {
   MAX_PENDING_CASTS, MAX_RECENT_MELEE_HITS, MAX_DOT_TRACKERS, MAX_PENDING_LANDINGS,
   SCORE_PLAYER_LANDING, SCORE_PLAYER_CAST_DB, SCORE_GROUP_LANDING,
   SCORE_OTHER_LANDING, SCORE_PLAYER_CAST_NOBD, SCORE_GROUP_CAST,
-  SCORE_GROUP_LANDING_NOCAST, SCORE_OTHER_LANDING_NOCAST,
+  SCORE_GROUP_LANDING_NOCAST, SCORE_ZONE_LANDING, SCORE_ZONE_CAST,
+  SCORE_ZONE_LANDING_NOCAST, SCORE_OTHER_LANDING_NOCAST,
   SCORE_UNKNOWN_MOB_HIT, SCORE_MOB_HIT_PLAYER,
   CONFIDENCE_HIGH_THRESHOLD, CONFIDENCE_MEDIUM_THRESHOLD,
   LABEL_NONMELEE, LABEL_DAMAGE_SHIELD, LABEL_DOT, LABEL_PROC, LABEL_OTHERS_SPELLS,
@@ -83,18 +84,16 @@ export class SpellCorrelator {
   private dotTrackers: DoTTracker[] = [];
   private pendingLandings: PendingLanding[] = [];
   private groupMembers = new Set<string>();
+  private zonePlayers = new Set<string>();
   private entityClassMap: Record<string, EQClass> = {};
   private playerName = '';
   private playerLevel = 0;
   private spellDb: Record<string, SpellInfo> = {};
   private landingMap: Record<string, LandingSpellInfo[]> = {};
-  // Charm tracking: lowercase mob name → charm info
   private charmedMobs = new Map<string, CharmedMob>();
   private pendingCharmCaster: string | null = null;
   private pendingCharmTimestamp = 0;
-  // Named pet tracking: lowercase pet name → owner name
   private knownPets = new Map<string, string>();
-  // When a player casts a pet summon spell, store pending summon
   private pendingPetSummon: { caster: string; timestamp: number } | null = null;
 
   setPlayerName(name: string) {
@@ -121,12 +120,26 @@ export class SpellCorrelator {
     this.groupMembers.delete(name);
   }
 
+  addZonePlayer(name: string) {
+    if (name && !isLikelyNPC(name) && name !== this.playerName) {
+      this.zonePlayers.add(name);
+    }
+  }
+
+  isZonePlayer(name: string): boolean {
+    return this.zonePlayers.has(name);
+  }
+
   setEntityClassMap(map: Record<string, EQClass>) {
     this.entityClassMap = map;
   }
 
   isKnownPlayer(name: string): boolean {
     return name === this.playerName || this.groupMembers.has(name);
+  }
+
+  isKnownOrZonePlayer(name: string): boolean {
+    return this.isKnownPlayer(name) || this.zonePlayers.has(name);
   }
 
   // ── Named pet tracking ──
@@ -576,14 +589,21 @@ export class SpellCorrelator {
           if (elapsed < anyCastMs - CAST_EARLY_TOLERANCE_MS) continue;
           if (elapsed > anyCastMs + CAST_LATE_TOLERANCE_MS) continue;
           const timingDelta = Math.abs(elapsed - anyCastMs);
-          const isGroupMember = this.isKnownPlayer(cast.caster);
-          const base = isGroupMember ? SCORE_GROUP_LANDING : SCORE_OTHER_LANDING;
+          const isGroup = this.isKnownPlayer(cast.caster);
+          const isZone = !isGroup && this.isZonePlayer(cast.caster);
+          const base = isGroup ? SCORE_GROUP_LANDING
+            : isZone ? SCORE_ZONE_LANDING
+            : SCORE_OTHER_LANDING;
           const score = base - (timingDelta / CAST_LATE_TOLERANCE_MS) * 50;
           if (score > bestScore) { bestScore = score; bestCast = cast; }
         } else {
           if (elapsed < MIN_CAST_TIME_MS || elapsed > MAX_CAST_WINDOW_MS) continue;
-          const isGroupMember = this.isKnownPlayer(cast.caster);
-          const score = (isGroupMember ? SCORE_GROUP_LANDING_NOCAST : SCORE_OTHER_LANDING_NOCAST) - (elapsed / MAX_CAST_WINDOW_MS) * 30;
+          const isGroup = this.isKnownPlayer(cast.caster);
+          const isZone = !isGroup && this.isZonePlayer(cast.caster);
+          const base = isGroup ? SCORE_GROUP_LANDING_NOCAST
+            : isZone ? SCORE_ZONE_LANDING_NOCAST
+            : SCORE_OTHER_LANDING_NOCAST;
+          const score = base - (elapsed / MAX_CAST_WINDOW_MS) * 30;
           if (score > bestScore) { bestScore = score; bestCast = cast; }
         }
       }
@@ -679,6 +699,10 @@ export class SpellCorrelator {
       }
       else if (targetIsMob && isLikelyNPC(cast.caster)) {
         continue;
+      }
+      else if (targetIsMob && this.isZonePlayer(cast.caster)) {
+        if (elapsed < MIN_CAST_TIME_MS || elapsed > MAX_CAST_WINDOW_MS) continue;
+        score = SCORE_ZONE_CAST - (elapsed / MAX_CAST_WINDOW_MS) * 30;
       }
       else if (targetIsMob) {
         if (elapsed < MIN_CAST_TIME_MS || elapsed > MAX_CAST_WINDOW_MS) continue;
@@ -779,12 +803,15 @@ export class SpellCorrelator {
         if (spell.baseDmg <= 0) continue;
 
         const castMs = spell.castMs;
+        const isGroup = this.isKnownPlayer(cast.caster);
+        const isZone = !isGroup && this.isZonePlayer(cast.caster);
         if (castMs > 0) {
           if (elapsed < castMs - CAST_EARLY_TOLERANCE_MS) continue;
           if (elapsed > castMs + CAST_LATE_TOLERANCE_MS) continue;
           const timingDelta = Math.abs(elapsed - castMs);
-          const isGroup = this.isKnownPlayer(cast.caster);
-          const base = isGroup ? SCORE_GROUP_LANDING : SCORE_OTHER_LANDING;
+          const base = isGroup ? SCORE_GROUP_LANDING
+            : isZone ? SCORE_ZONE_LANDING
+            : SCORE_OTHER_LANDING;
           const score = base - (timingDelta / CAST_LATE_TOLERANCE_MS) * 50;
           if (score > bestScore) {
             bestScore = score;
@@ -793,9 +820,10 @@ export class SpellCorrelator {
           }
         } else {
           if (elapsed < MIN_CAST_TIME_MS || elapsed > MAX_CAST_WINDOW_MS) continue;
-          const isGroup = this.isKnownPlayer(cast.caster);
-          const score = (isGroup ? SCORE_GROUP_LANDING_NOCAST : SCORE_OTHER_LANDING_NOCAST)
-                        - (elapsed / MAX_CAST_WINDOW_MS) * 30;
+          const base = isGroup ? SCORE_GROUP_LANDING_NOCAST
+            : isZone ? SCORE_ZONE_LANDING_NOCAST
+            : SCORE_OTHER_LANDING_NOCAST;
+          const score = base - (elapsed / MAX_CAST_WINDOW_MS) * 30;
           if (score > bestScore) {
             bestScore = score;
             bestCast = cast;
@@ -847,6 +875,7 @@ export class SpellCorrelator {
   fullReset() {
     this.reset();
     this.groupMembers.clear();
+    this.zonePlayers.clear();
     this.knownPets.clear();
   }
 }
