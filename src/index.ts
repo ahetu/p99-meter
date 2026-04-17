@@ -782,13 +782,33 @@ function repositionMapToEQ() {
   }
 }
 
+let logRetryTimer: ReturnType<typeof setInterval> | null = null;
+
+function stopLogRetry() {
+  if (logRetryTimer) {
+    clearInterval(logRetryTimer);
+    logRetryTimer = null;
+  }
+}
+
 function startLogWatcher() {
   stopLogWatcher();
+  stopLogRetry();
   const logs = findLogs();
   const logFile = logs[0];
 
   if (!logFile) {
-    logWarn('No EQ log files found — /log on must be enabled in-game');
+    logWarn('No EQ log files found — /log on must be enabled in-game. Retrying every 5s...');
+    if (!logRetryTimer) {
+      logRetryTimer = setInterval(() => {
+        const retryLogs = findLogs();
+        if (retryLogs.length > 0) {
+          logInfo('Log file appeared, starting watcher');
+          stopLogRetry();
+          startLogWatcher();
+        }
+      }, 5000);
+    }
     return;
   }
   if (!mainWindow) {
@@ -945,6 +965,7 @@ if (gotLock) {
 
   app.on('before-quit', () => {
     stopLogWatcher();
+    stopLogRetry();
     stopResizePolling();
     stopMapResizePolling();
     if (classDbSaveTimer) { clearTimeout(classDbSaveTimer); classDbSaveTimer = null; }
