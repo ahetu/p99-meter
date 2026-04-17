@@ -118,6 +118,19 @@ const EQ_DIR = app.isPackaged
   : APP_DIR;
 const LOGS_DIR = path.join(EQ_DIR, 'Logs');
 
+// Windows UAC virtualization redirects writes from Program Files to VirtualStore.
+// EQ (32-bit) may write logs there instead of the real EQ directory.
+function resolveVirtualStoreLogs(): string | null {
+  const localAppData = process.env.LOCALAPPDATA;
+  if (!localAppData) return null;
+  // EQ_DIR like "C:\Program Files (x86)\Sony\EverQuest" → strip drive letter
+  const m = EQ_DIR.match(/^[A-Za-z]:\\(.+)$/);
+  if (!m) return null;
+  const vsLogs = path.join(localAppData, 'VirtualStore', m[1], 'Logs');
+  if (fs.existsSync(vsLogs)) return vsLogs;
+  return null;
+}
+
 logInfo('Paths resolved', {
   isPackaged: app.isPackaged,
   EQ_DIR,
@@ -379,34 +392,46 @@ function repositionMeterToEQ() {
 }
 
 function findLogs(): { name: string; path: string; character: string; mtime: number }[] {
+  // Collect log files from both the real Logs dir and VirtualStore (UAC redirect)
+  const dirs: string[] = [];
+  if (fs.existsSync(LOGS_DIR)) dirs.push(LOGS_DIR);
+  const vsDir = resolveVirtualStoreLogs();
+  if (vsDir && vsDir !== LOGS_DIR) dirs.push(vsDir);
+
+  if (dirs.length === 0) {
+    logWarn('Logs directory does not exist', { LOGS_DIR, virtualStore: vsDir });
+    return [];
+  }
+
   try {
-    const dirExists = fs.existsSync(LOGS_DIR);
-    if (!dirExists) {
-      logWarn('Logs directory does not exist', { LOGS_DIR });
-      return [];
-    }
+    const result: { name: string; path: string; character: string; mtime: number }[] = [];
+    const seen = new Set<string>();
 
-    const allFiles = fs.readdirSync(LOGS_DIR);
-    const logFiles = allFiles.filter(f => f.startsWith('eqlog_') && f.endsWith('.txt'));
-    logDebug('Found log files', { count: logFiles.length, first5: logFiles.slice(0, 5) });
-
-    const result = logFiles
-      .map(f => {
-        const full = path.join(LOGS_DIR, f);
+    for (const dir of dirs) {
+      const allFiles = fs.readdirSync(dir);
+      const logFiles = allFiles.filter(f => f.startsWith('eqlog_') && f.endsWith('.txt'));
+      if (dir !== LOGS_DIR) {
+        logInfo('Found logs in VirtualStore', { dir, count: logFiles.length });
+      }
+      for (const f of logFiles) {
+        if (seen.has(f)) continue;
+        seen.add(f);
+        const full = path.join(dir, f);
         try {
-          return {
+          result.push({
             name: f,
             path: full,
             character: extractCharacterName(f),
             mtime: fs.statSync(full).mtime.getTime(),
-          };
+          });
         } catch (err) {
           logWarn('Failed to stat log file', { file: f, error: String(err) });
-          return null;
         }
-      })
-      .filter((f): f is NonNullable<typeof f> => f !== null)
-      .sort((a, b) => b.mtime - a.mtime);
+      }
+    }
+
+    logDebug('Found log files', { count: result.length, first5: result.slice(0, 5).map(r => r.name) });
+    result.sort((a, b) => b.mtime - a.mtime);
 
     if (result.length > 0) {
       logInfo('Most recent log file', {
