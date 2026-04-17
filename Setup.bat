@@ -44,7 +44,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "$link.TargetPath = '%METER_DIR%Launch EverQuest.bat';" ^
     "$link.WorkingDirectory = '%METER_DIR%';" ^
     "$link.IconLocation = '%EQ_DIR%\eqgame.exe,0';" ^
-    "$link.WindowStyle = 7;" ^
+    "$link.WindowStyle = 1;" ^
     "$link.Description = 'Launch EverQuest P99 with Damage Meter';" ^
     "$link.Save()"
 

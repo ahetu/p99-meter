@@ -1,5 +1,5 @@
 // Logger must be imported first, before anything else
-import { logInfo, logError, logWarn, logDebug, getLogFilePath } from './logger';
+import { logInfo, logError, logWarn, logDebug, getLogFilePath, getDataDir } from './logger';
 
 logInfo('=== p99-meter process starting ===');
 logInfo('Process info', {
@@ -136,9 +136,24 @@ let lastEqBounds = { x: 0, y: 0, width: 1024, height: 768 };
 // ── Layout persistence ──
 const DEFAULT_OFFSET = { x: 20, y: 20 };
 const DEFAULT_SIZE = { w: 320, h: 350 };
-const LAYOUT_FILE = path.join(EQ_DIR, 'p99-meter-layout.json');
-const CLASSDB_FILE = path.join(EQ_DIR, 'p99-meter-classdb.json');
-logInfo('Persistence files', { LAYOUT_FILE, CLASSDB_FILE });
+const DATA_DIR = getDataDir();
+const LAYOUT_FILE = path.join(DATA_DIR, 'p99-meter-layout.json');
+const CLASSDB_FILE = path.join(DATA_DIR, 'p99-meter-classdb.json');
+logInfo('Persistence files', { DATA_DIR, LAYOUT_FILE, CLASSDB_FILE });
+
+// Migrate config files from old EQ_DIR location if they exist there but not in DATA_DIR
+for (const fname of ['p99-meter-layout.json', 'p99-meter-classdb.json']) {
+  const oldPath = path.join(EQ_DIR, fname);
+  const newPath = path.join(DATA_DIR, fname);
+  try {
+    if (fs.existsSync(oldPath) && !fs.existsSync(newPath)) {
+      fs.copyFileSync(oldPath, newPath);
+      logInfo('Migrated config file', { from: oldPath, to: newPath });
+    }
+  } catch (err: any) {
+    logWarn('Failed to migrate config file', { file: fname, error: err.message });
+  }
+}
 
 let meterOffset = { ...DEFAULT_OFFSET };
 let meterSize = { ...DEFAULT_SIZE };

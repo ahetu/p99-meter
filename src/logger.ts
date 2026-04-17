@@ -5,18 +5,47 @@ const MAX_LOG_SIZE = 5 * 1024 * 1024;
 
 let logPath: string | null = null;
 let logStream: fs.WriteStream | null = null;
+let resolvedDataDir: string | null = null;
+
+function isWritableDir(dir: string): boolean {
+  const testFile = path.join(dir, '.p99-meter-write-test');
+  try {
+    fs.writeFileSync(testFile, '');
+    fs.unlinkSync(testFile);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns a directory the app can write config/log files to.
+ * Prefers the exe directory (so files live alongside the app),
+ * falls back to %APPDATA%/p99-meter when that isn't writable
+ * (e.g. Program Files).
+ */
+export function getDataDir(): string {
+  if (resolvedDataDir) return resolvedDataDir;
+
+  const isPackaged = !process.execPath.includes('node_modules');
+  const exeDir = path.dirname(process.execPath);
+  const preferred = isPackaged ? exeDir : path.resolve(__dirname, '..', '..');
+
+  if (isWritableDir(preferred)) {
+    resolvedDataDir = preferred;
+    return resolvedDataDir;
+  }
+
+  const appData = process.env.APPDATA || process.env.LOCALAPPDATA || '';
+  const fallback = path.join(appData, 'p99-meter');
+  try { fs.mkdirSync(fallback, { recursive: true }); } catch { /* ok */ }
+  resolvedDataDir = fallback;
+  return resolvedDataDir;
+}
 
 function resolveLogPath(): string {
   if (logPath) return logPath;
-
-  // Use process.execPath to work even before app.ready
-  const exeDir = path.dirname(process.execPath);
-
-  // In dev mode (__dirname is .webpack/main), walk up to project root
-  const isPackaged = !process.execPath.includes('node_modules');
-  const dir = isPackaged ? exeDir : path.resolve(__dirname, '..', '..');
-
-  logPath = path.join(dir, 'p99-meter.log');
+  logPath = path.join(getDataDir(), 'p99-meter.log');
   return logPath;
 }
 
