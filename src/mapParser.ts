@@ -36,7 +36,7 @@ export interface ZoneMap {
   floors: FloorInfo[];
 }
 
-const NON_P99_RE = /Plane_of_Knowledge|Click_Book|Corathus|Feerott_the_Dream|the_Dream_\(click\)|LDoN|Wayfarer|Magus_.*Port|\(Mission[,)]|\(Parcels\)|DKU[:\d]|\(Melee_Augs\)|\(Kill_Quests?\)|Nights?_of_the_Dead|\(Reborn\)|Fabled_|_the_Fabled_/i;
+const NON_P99_RE = /Plane_of_Knowledge|Click_Book|Corathus|Feerott_the_Dream|the_Dream_\(click\)|LDoN|Wayfarer|Magus_.*Port|\(Mission[,)]|\(Parcels\)|DKU[:\d]|\(Melee_Augs\)|\(Kill_Quests?\)|Nights?_of_the_Dead|\(Reborn\)|Fabled_|_the_Fabled_|\(Tribute|\(Task_Master|\(Mercenary|\(Augmentation|Adventure_Merchant|Adventure_Point|Group_Adventures/i;
 const NOISE_RE = /^\.$|^[0-9]$|^https?:|^Revised_Map:|^Original_Map:|^Return_of_the|eqmaps\.info|roteguild\.org/i;
 const ZONE_RE = /^to_/i;
 const HUNTER_RE = /\(Hunter|\(Roam/i;
@@ -119,6 +119,7 @@ const FLOOR_BIN_SIZE = 5;
 const FLOOR_GAP_THRESHOLD = 20;
 const FLAT_Z_RANGE = 200;
 const MIN_FLOOR_COUNT = 3;
+const WINDOW_Z_XY_RATIO = 0.2;
 
 function detectFloors(lines: MapLine[], bounds: MapBounds): { zMode: ZMode; floors: FloorInfo[] } {
   const zRange = bounds.maxZ - bounds.minZ;
@@ -152,7 +153,6 @@ function detectFloors(lines: MapLine[], bounds: MapBounds): { zMode: ZMode; floo
 
   // Check gaps between consecutive groups
   const floors: FloorInfo[] = [];
-  let hasLargeGaps = true;
   let largeGapCount = 0;
   for (let i = 0; i < groups.length; i++) {
     if (i > 0) {
@@ -181,5 +181,13 @@ function detectFloors(lines: MapLine[], bounds: MapBounds): { zMode: ZMode; floo
     return { zMode: 'floors', floors };
   }
 
-  return { zMode: 'window', floors: [] };
+  // Use z-window mode for compact multi-level zones (dungeons) where geometry
+  // overlaps vertically but has no clean floor gaps. The z/xy ratio distinguishes
+  // these from outdoor zones with hilly terrain.
+  const xySpan = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+  if (xySpan > 0 && zRange / xySpan >= WINDOW_Z_XY_RATIO) {
+    return { zMode: 'window', floors: [] };
+  }
+
+  return { zMode: 'flat', floors: [] };
 }

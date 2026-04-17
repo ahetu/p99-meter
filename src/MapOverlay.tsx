@@ -281,8 +281,8 @@ export default function MapOverlay({ mapData, zoneName, playerLoc, prevPlayerLoc
   // Center on player when location updates
   useEffect(() => {
     if (!centerOnPlayer || !playerLoc || !mapData) return;
-    const mapX = -playerLoc.y;
-    const mapY = -playerLoc.x;
+    const mapX = -playerLoc.x;
+    const mapY = -playerLoc.y;
     setPan({
       x: containerSize.w / 2 - mapX * zoom,
       y: containerSize.h / 2 - mapY * zoom,
@@ -432,8 +432,8 @@ export default function MapOverlay({ mapData, zoneName, playerLoc, prevPlayerLoc
 
     // Draw player position
     if (playerLoc) {
-      const px = -playerLoc.y;
-      const py = -playerLoc.x;
+      const px = -playerLoc.x;
+      const py = -playerLoc.y;
       const r = PLAYER_RADIUS / zoom;
 
       ctx.shadowColor = PLAYER_GLOW;
@@ -454,8 +454,8 @@ export default function MapOverlay({ mapData, zoneName, playerLoc, prevPlayerLoc
       ctx.shadowBlur = 0;
 
       if (prevPlayerLoc) {
-        const dx = prevPlayerLoc.y - playerLoc.y;
-        const dy = prevPlayerLoc.x - playerLoc.x;
+        const dx = prevPlayerLoc.x - playerLoc.x;
+        const dy = prevPlayerLoc.y - playerLoc.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist > 0.5) {
           const nx = dx / dist;
@@ -612,7 +612,7 @@ export default function MapOverlay({ mapData, zoneName, playerLoc, prevPlayerLoc
             </TitleBtn>
           </span>
         )}
-        {/* Z-window controls for continuous dungeons */}
+        {/* Z-window controls for continuous multi-level dungeons */}
         {mapData?.zMode === 'window' && (
           <span style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
             <Layers size={12} strokeWidth={2} color={subtleTextColor} style={{ marginRight: 2, flexShrink: 0 }} />
