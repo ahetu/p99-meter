@@ -312,6 +312,161 @@ describe('SpellCorrelator — charm tracking', () => {
   });
 });
 
+describe('SpellCorrelator — NPC cast suppression', () => {
+  let corr: SpellCorrelator;
+
+  beforeEach(() => {
+    corr = new SpellCorrelator();
+    corr.setPlayerName('Testplayer');
+    corr.setPlayerLevel(55);
+    corr.setSpellDb({
+      'exile undead': { baseDmg: 600, maxDmg: 600, castMs: 2750, calc: 100, minLevel: 44 },
+    });
+    corr.setLandingMap({
+      ' staggers.': [{
+        spellName: 'Exile Undead', baseDmg: 600, maxDmg: 600,
+        castMs: 2750, calc: 100, minLevel: 44,
+      }],
+    });
+  });
+
+  it('suppresses attributeLandingDirect when NPC was casting recently', () => {
+    const now = Date.now();
+    corr.addGroupMember('Finaleena');
+
+    // Group member begins to cast
+    corr.recordCastStart(makeEvent({
+      type: 'other_cast_start', source: 'Finaleena', skill: '', timestamp: now,
+    }));
+    // NPC also begins to cast
+    corr.recordCastStart(makeEvent({
+      type: 'other_cast_start', source: 'The Head Usher', skill: '', timestamp: now + 500,
+    }));
+
+    // Landing message arrives — could be from the NPC or the player
+    const landingEv = makeEvent({
+      type: 'spell_land', source: '', target: 'a skeleton',
+      skill: ' staggers.', timestamp: now + 3000,
+    });
+
+    const result = corr.attributeLandingDirect(landingEv, { Finaleena: 55 });
+    expect(result).toBeNull();
+  });
+
+  it('suppresses attributeWithLanding for non-player casts when NPC was casting', () => {
+    const now = Date.now();
+    corr.addGroupMember('Finaleena');
+
+    // Group member begins to cast
+    corr.recordCastStart(makeEvent({
+      type: 'other_cast_start', source: 'Finaleena', skill: '', timestamp: now,
+    }));
+    // NPC also begins to cast
+    corr.recordCastStart(makeEvent({
+      type: 'other_cast_start', source: 'The Head Usher', skill: '', timestamp: now + 500,
+    }));
+
+    // Landing message
+    corr.recordLanding(makeEvent({
+      type: 'spell_land', source: '', target: 'a skeleton',
+      skill: ' staggers.', timestamp: now + 3000,
+    }));
+
+    // Non-melee damage on the target
+    const result = corr.attributeSpellDamage(makeEvent({
+      type: 'spell_damage', source: '', target: 'a skeleton',
+      amount: 600, timestamp: now + 3000,
+    }));
+
+    // Should NOT be attributed to Finaleena
+    expect(result.source).not.toBe('Finaleena');
+  });
+
+  it('still attributes to player when NPC is also casting (player has verified spell name)', () => {
+    const now = Date.now();
+
+    // Player casts a known spell
+    corr.recordCastStart(makeEvent({
+      type: 'cast_start', source: 'You', skill: 'Exile Undead', timestamp: now,
+    }));
+    // NPC also begins to cast
+    corr.recordCastStart(makeEvent({
+      type: 'other_cast_start', source: 'The Head Usher', skill: '', timestamp: now + 500,
+    }));
+
+    // Landing + damage
+    corr.recordLanding(makeEvent({
+      type: 'spell_land', source: '', target: 'a skeleton',
+      skill: ' staggers.', timestamp: now + 3000,
+    }));
+
+    const result = corr.attributeSpellDamage(makeEvent({
+      type: 'spell_damage', source: '', target: 'a skeleton',
+      amount: 600, timestamp: now + 3000,
+    }));
+
+    // Player's own verified spell should still be attributed
+    expect(result.source).toBe('Testplayer');
+    expect(result.spellName).toBe('Exile Undead');
+  });
+
+  it('hasRecentNpcCast returns false after NPC casts expire', () => {
+    const now = Date.now();
+
+    corr.recordCastStart(makeEvent({
+      type: 'other_cast_start', source: 'The Head Usher', skill: '', timestamp: now,
+    }));
+
+    expect(corr.hasRecentNpcCast(now + 5000)).toBe(true);
+    expect(corr.hasRecentNpcCast(now + 13000)).toBe(false);
+  });
+
+  it('non-melee damage on a known player is never attributed to a player', () => {
+    const now = Date.now();
+    corr.addGroupMember('Finaleena');
+
+    corr.recordCastStart(makeEvent({
+      type: 'other_cast_start', source: 'Finaleena', skill: '', timestamp: now,
+    }));
+
+    // Non-melee damage hits Finaleena (a group member) — must be NPC spell
+    const result = corr.attributeSpellDamage(makeEvent({
+      type: 'spell_damage', source: '', target: 'Finaleena',
+      amount: 500, timestamp: now + 3000,
+    }));
+
+    expect(result.source).toBe('Others (Spells)');
+    expect(result.confidence).toBe('high');
+  });
+
+  it('non-melee damage on the player is never attributed to a player cast', () => {
+    const now = Date.now();
+
+    corr.recordCastStart(makeEvent({
+      type: 'cast_start', source: 'You', skill: 'Exile Undead', timestamp: now,
+    }));
+
+    // Non-melee damage hits the player — must be NPC spell, don't consume player's cast
+    const result = corr.attributeSpellDamage(makeEvent({
+      type: 'spell_damage', source: '', target: 'Testplayer',
+      amount: 600, timestamp: now + 3000,
+    }));
+
+    expect(result.source).toBe('Others (Spells)');
+  });
+
+  it('clears NPC cast tracking on reset', () => {
+    const now = Date.now();
+
+    corr.recordCastStart(makeEvent({
+      type: 'other_cast_start', source: 'The Head Usher', skill: '', timestamp: now,
+    }));
+
+    corr.reset();
+    expect(corr.hasRecentNpcCast(now + 2000)).toBe(false);
+  });
+});
+
 describe('SpellCorrelator — pet tracking', () => {
   let corr: SpellCorrelator;
 

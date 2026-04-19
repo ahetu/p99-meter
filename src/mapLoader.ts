@@ -136,6 +136,7 @@ const ZONE_NAME_MAP: Record<string, string> = {
   'Lair of the Splitpaw': 'paw',
   'Rathe Mountains': 'rathemtn',
   'Lake Rathetear': 'lakerathe',
+  'Gorge of King Xorbb': 'beholder',
   'Felwithe': 'felwithea',
   'Northern Felwithe': 'felwithea',
   'Southern Felwithe': 'felwitheb',

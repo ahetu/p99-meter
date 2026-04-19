@@ -498,15 +498,20 @@ export function useCombatTracker(playerName: string) {
         const estimated = corr.attributeLandingDirect(ev, entityLevelMap.current);
         if (estimated && estimated.amount > 0) {
           const tgtName = normalizeTarget(ev.target, pName);
-          const fight = getOrCreateFight(all, ev.timestamp, true);
-          if (fight) {
-            fight.lastEventTime = ev.timestamp;
-            resetCombatTimer();
-            addMob(fight, tgtName);
-            const label = estimated.spellName + ' (est.)';
-            creditDamage(fight, estimated.source, tgtName, estimated.amount, label, false, false, clsMap, true);
-            updateColor(estimated.source, clsMap[estimated.source] || null);
-            dirty = true;
+          // Don't credit estimated damage if the target is a known player —
+          // that would mean an NPC spell hit a player and we'd wrongly add
+          // the player as a mob and credit the estimated source.
+          if (tgtName !== pName && !corr.isKnownOrZonePlayer(tgtName)) {
+            const fight = getOrCreateFight(all, ev.timestamp, true);
+            if (fight) {
+              fight.lastEventTime = ev.timestamp;
+              resetCombatTimer();
+              addMob(fight, tgtName);
+              const label = estimated.spellName + ' (est.)';
+              creditDamage(fight, estimated.source, tgtName, estimated.amount, label, false, false, clsMap, true);
+              updateColor(estimated.source, clsMap[estimated.source] || null);
+              dirty = true;
+            }
           }
         }
         continue;

@@ -1,15 +1,47 @@
 ---
-description: Deployment workflow — always extract to local EQ directory after packaging
+description: Release and deployment workflow — version bump, package, deploy, push, and create GitHub release
 alwaysApply: true
 ---
 
-# Deploy Workflow
+# Release & Deploy Workflow
 
-After packaging a new version (`npm run dist`), always extract the zip to the local EverQuest directory so the user runs the latest build:
+Every time you package and push changes, follow ALL of these steps in order:
+
+## 1. Bump version
+
+Increment the patch version in `package.json` (e.g. `1.0.14` → `1.0.15`). Commit the version bump with a message like `v1.0.15: <short description>`.
+
+## 2. Package
 
 ```powershell
+npm run dist
+```
+
+## 3. Deploy locally
+
+Extract the zip to the local EverQuest directory so the user runs the latest build:
+
+```powershell
+taskkill /F /IM p99-meter.exe 2>$null
+Start-Sleep -Seconds 2
 if (Test-Path "z:\Everquest P99\p99-meter") { Remove-Item "z:\Everquest P99\p99-meter" -Recurse -Force }
 Expand-Archive -Path "z:\Everquest P99\AddOns\p99-meter\out\p99-meter-v<VERSION>.zip" -DestinationPath "z:\Everquest P99\" -Force
 ```
 
-Do this automatically whenever you package and push a release — don't wait to be asked.
+## 4. Push to git
+
+```powershell
+git push
+```
+
+## 5. Create GitHub release
+
+Create a release with the zip attached and patch notes summarizing what changed:
+
+```powershell
+gh release create v<VERSION> "out/p99-meter-v<VERSION>.zip" --title "v<VERSION>" --notes "<patch notes>"
+```
+
+Patch notes should be concise bullet points describing user-facing changes.
+
+**Do this automatically whenever you package and push — don't wait to be asked.**

@@ -95,6 +95,7 @@ export class SpellCorrelator {
   private pendingCharmTimestamp = 0;
   private knownPets = new Map<string, string>();
   private pendingPetSummon: { caster: string; timestamp: number } | null = null;
+  private recentNpcCasts: { name: string; timestamp: number }[] = [];
 
   setPlayerName(name: string) {
     this.playerName = name;
@@ -300,11 +301,23 @@ export class SpellCorrelator {
     }
   }
 
+  hasRecentNpcCast(timestamp: number): boolean {
+    return this.recentNpcCasts.some(
+      c => (timestamp - c.timestamp) >= 0 && (timestamp - c.timestamp) <= MAX_CAST_WINDOW_MS
+    );
+  }
+
   recordCastStart(ev: CombatEvent) {
     const caster = normalizeSource(ev.source, this.playerName);
     if (!caster) return;
 
-    if (caster !== this.playerName && isLikelyNPC(caster)) return;
+    if (caster !== this.playerName && isLikelyNPC(caster)) {
+      this.recentNpcCasts.push({ name: caster, timestamp: ev.timestamp });
+      this.recentNpcCasts = this.recentNpcCasts.filter(
+        c => ev.timestamp - c.timestamp < MAX_CAST_WINDOW_MS * 2
+      );
+      return;
+    }
 
     const cast: PendingCast = {
       id: nextCastId++,
@@ -415,6 +428,19 @@ export class SpellCorrelator {
     const amount = ev.amount;
     const now = ev.timestamp;
     const targetIsMob = !this.isKnownPlayer(target);
+
+    // ── 0. Target is a player → NPC spell (no PvP on P99) ──
+    // Don't consume any pending player casts; the tracker records this
+    // as damageTaken on the target regardless of the source we return.
+    if (this.isKnownOrZonePlayer(target)) {
+      return {
+        source: LABEL_OTHERS_SPELLS,
+        target, amount,
+        isDamageShield: false, isDoT: false,
+        spellName: LABEL_NONMELEE,
+        confidence: 'high',
+      };
+    }
 
     // ── 1. Damage Shield Detection ──
     if (amount <= DS_MAX_DAMAGE && targetIsMob) {
@@ -610,6 +636,12 @@ export class SpellCorrelator {
     }
 
     if (bestCast) {
+      // If the best match is from a non-player generic "begins to cast" and an NPC
+      // was also casting recently, the landing likely came from the NPC's spell.
+      if (bestCast.caster !== this.playerName && this.hasRecentNpcCast(now)) {
+        return null;
+      }
+
       this.consumeCastById(bestCast.id, now);
 
       const resolvedName = bestCast.spellName || landing.spellName;
@@ -720,6 +752,13 @@ export class SpellCorrelator {
 
     if (candidates.length > 0) {
       const best = candidates[0];
+
+      // If the best match is from a non-player and an NPC was casting recently,
+      // the damage likely came from the NPC's spell.
+      if (best.caster !== this.playerName && this.hasRecentNpcCast(now)) {
+        return null;
+      }
+
       this.consumeCastById(best.id, now);
 
       const confidence = best.score >= CONFIDENCE_HIGH_THRESHOLD ? 'high'
@@ -786,6 +825,10 @@ export class SpellCorrelator {
       (now - cast.timestamp) <= MAX_CAST_WINDOW_MS
     );
     if (playerMayMatch) return null;
+
+    // If an NPC was casting recently, the landing message likely came from
+    // the NPC's spell — don't attribute it to a player via estimation.
+    if (this.hasRecentNpcCast(now)) return null;
 
     let bestCast: PendingCast | null = null;
     let bestSpell: LandingSpellInfo | null = null;
@@ -867,6 +910,7 @@ export class SpellCorrelator {
     this.charmedMobs.clear();
     this.pendingCharmCaster = null;
     this.pendingPetSummon = null;
+    this.recentNpcCasts = [];
     // groupMembers, knownPets, playerName, playerLevel, spellDb, landingMap,
     // entityClassMap are intentionally preserved — they represent persistent
     // identity/reference data that survives zone changes

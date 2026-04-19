@@ -173,8 +173,11 @@ export function loadAllSpellData(eqDir: string): {
       }
     }
 
-    // Landing map: damage spells with landing messages (any castability)
-    if (row.isDamage && row.landingMsg) {
+    // Landing map: player-castable damage spells with landing messages.
+    // NPC-only spells are excluded to avoid false attribution (e.g. Stone Feet
+    // is an NPC root spell whose " stumbles." landing would incorrectly match
+    // player casts during correlation).
+    if (row.isDamage && row.landingMsg && row.isPlayerCastable) {
       const landKey = row.landingMsg.toLowerCase();
       if (!landingMap[landKey]) landingMap[landKey] = [];
       if (!landingMap[landKey].some(e => e.spellName.toLowerCase() === row.name.toLowerCase())) {

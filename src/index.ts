@@ -785,13 +785,14 @@ function handleZoneChange(displayName: string) {
 function loadAndSendMapData(shortName: string) {
   try {
     const mapData = loadZoneMap(shortName, APP_DIR);
+    sendToMap('map-data', mapData);
     if (mapData) {
-      sendToMap('map-data', mapData);
       logInfo('Map data sent', { zone: shortName, lines: mapData.lines.length, labels: mapData.labels.length });
     } else {
       logWarn('No map data found for zone', { zone: shortName });
     }
   } catch (err: any) {
+    sendToMap('map-data', null);
     logError('Failed to load map data', { zone: shortName, error: err.message });
   }
 }
