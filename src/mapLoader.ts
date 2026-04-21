@@ -46,12 +46,11 @@ export function listAvailableZones(appRoot: string): string[] {
 }
 
 function resolveMapDir(appRoot: string): string | null {
-  // In packaged app: maps/ is next to the exe directory
   const candidates = [
-    path.join(appRoot, 'maps'),
+    path.resolve(__dirname, '..', '..', 'maps'),                  // dev: project root (.webpack/main/ → project)
+    path.join(appRoot, 'maps'),                                    // packaged: next to exe
     path.join(path.dirname(appRoot), 'maps'),
-    path.resolve(__dirname, '..', '..', '..', '..', 'maps'),     // dev: project root
-    path.resolve(__dirname, '..', 'maps'),                        // dev fallback
+    path.resolve(__dirname, '..', 'maps'),
   ];
   for (const dir of candidates) {
     if (fs.existsSync(dir)) return dir;

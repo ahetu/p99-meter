@@ -20,8 +20,8 @@ interface Props {
   onSaveSettings?: (settings: MapSettingsState) => void;
 }
 
-const BG_DARK = 'rgba(8, 8, 10, 0.96)';
-const BG_LIGHT = 'rgba(235, 222, 200, 0.96)';
+const BG_DARK = '#08080a';
+const BG_LIGHT = '#ebdec8';
 const PLAYER_COLOR = '#3deb34';
 const PLAYER_GLOW = 'rgba(61, 235, 52, 0.5)';
 const PLAYER_RADIUS = 6;
@@ -266,13 +266,14 @@ export default function MapOverlay({ mapData, zoneName, playerLoc, prevPlayerLoc
     });
   }, [mapData, containerSize]);
 
-  // Observe container size
+  // Observe container size (rounded to avoid subpixel jitter redraws)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const obs = new ResizeObserver((entries) => {
-      const { width, height } = entries[0].contentRect;
-      setContainerSize({ w: width, h: height });
+      const w = Math.round(entries[0].contentRect.width);
+      const h = Math.round(entries[0].contentRect.height);
+      setContainerSize(prev => (prev.w === w && prev.h === h) ? prev : { w, h });
     });
     obs.observe(el);
     return () => obs.disconnect();
@@ -546,7 +547,7 @@ export default function MapOverlay({ mapData, zoneName, playerLoc, prevPlayerLoc
   const subtleTextColor = dark ? '#777' : '#8a7a60';
   const btnInactiveColor = dark ? '#666' : '#9a8a6a';
   const outerBorder = dark ? '1px solid rgba(60,60,60,0.4)' : '1px solid rgba(160,140,100,0.5)';
-  const outerBg = dark ? 'rgba(12,12,14,0.94)' : 'rgba(230,218,196,0.96)';
+  const outerBg = dark ? '#0c0c0e' : '#e6dac4';
   const gripColor = dark ? '#aaa' : '#8a7a60';
 
   const coordsText = playerLoc
