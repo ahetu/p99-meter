@@ -88,7 +88,6 @@ const ZONE_NAME_MAP: Record<string, string> = {
   'Dagnor\'s Cauldron': 'cauldron',
   'Estate of Unrest': 'unrest',
   'Kithicor Forest': 'kithicor',
-  'Kithicor Woods': 'kithicor',
   'Highpass Hold': 'highpass',
   'High Keep': 'highkeep',
   'East Commonlands': 'ecommons',
@@ -198,9 +197,15 @@ const ZONE_NAME_MAP: Record<string, string> = {
   'Western Wastes': 'westwastes',
 };
 
+let cachedZoneFiles: string[] | null = null;
+
+/** Pre-populate the available zone file cache (call once at startup). */
+export function initZoneFileCache(appRoot: string) {
+  cachedZoneFiles = listAvailableZones(appRoot);
+}
+
 /** Resolve a display zone name (from "You have entered X." or /who summary) to a map file short name. */
 export function resolveZoneShortName(displayName: string): string {
-  // /who uses "The Plane of Hate" while zone entry uses "Plane of Hate"
   const normalized = displayName.replace(/^The /i, '');
 
   // Direct lookup (try both original and stripped-The forms)
@@ -213,7 +218,30 @@ export function resolveZoneShortName(displayName: string): string {
     if (key.toLowerCase() === lower) return val;
   }
 
-  // Fallback: strip spaces, lowercase — might match short name directly
+  // Fallback: strip to alphanumeric and try fuzzy match against map files
   const stripped = lower.replace(/[^a-z0-9]/g, '');
+  const depluralized = stripped.endsWith('s') ? stripped.slice(0, -1) : stripped;
+
+  if (cachedZoneFiles) {
+    if (cachedZoneFiles.includes(stripped)) return stripped;
+    if (depluralized !== stripped && cachedZoneFiles.includes(depluralized)) return depluralized;
+
+    // Prefix/overlap match: handles plural variants ("warslikswoods" → "warslikswood"),
+    // appended words ("kithicorwoods" → "kithicor"), etc.
+    let bestMatch: string | null = null;
+    let bestLen = 0;
+    for (const zone of cachedZoneFiles) {
+      if (stripped.startsWith(zone) || zone.startsWith(stripped)) {
+        const overlap = Math.min(stripped.length, zone.length);
+        const longer = Math.max(stripped.length, zone.length);
+        if (overlap / longer >= 0.6 && zone.length > bestLen) {
+          bestMatch = zone;
+          bestLen = zone.length;
+        }
+      }
+    }
+    if (bestMatch) return bestMatch;
+  }
+
   return stripped;
 }

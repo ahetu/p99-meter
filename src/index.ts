@@ -66,12 +66,14 @@ let extractCharacterName: typeof import('./logParser').extractCharacterName;
 let loadAllSpellData: typeof import('./spellDatabase').loadAllSpellData;
 let loadZoneMap: typeof import('./mapLoader').loadZoneMap;
 let resolveZoneShortName: typeof import('./mapLoader').resolveZoneShortName;
+let initZoneFileCache: typeof import('./mapLoader').initZoneFileCache;
 try {
   LogWatcher = require('./logWatcher').LogWatcher;
   extractCharacterName = require('./logParser').extractCharacterName;
   loadAllSpellData = require('./spellDatabase').loadAllSpellData;
   loadZoneMap = require('./mapLoader').loadZoneMap;
   resolveZoneShortName = require('./mapLoader').resolveZoneShortName;
+  initZoneFileCache = require('./mapLoader').initZoneFileCache;
   logInfo('Local modules loaded (logWatcher, logParser, spellDatabase, mapLoader)');
 } catch (err: any) {
   logError('FATAL: Failed to load local modules', { message: err.message, stack: err.stack });
@@ -117,6 +119,8 @@ const EQ_DIR = app.isPackaged
   ? path.resolve(APP_DIR, '..')
   : APP_DIR;
 const LOGS_DIR = path.join(EQ_DIR, 'Logs');
+
+initZoneFileCache(APP_DIR);
 
 // Windows UAC virtualization redirects writes from Program Files to VirtualStore.
 // EQ (32-bit) may write logs there instead of the real EQ directory.
