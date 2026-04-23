@@ -54,6 +54,50 @@ if %errorlevel% equ 0 (
     echo   [WARNING] Could not create shortcut. You can run "Launch EverQuest.bat" directly.
 )
 
+:: Detect CPU topology for optimal EverQuest core affinity.
+:: Hybrid Intel CPUs have P-cores (performance) and E-cores (efficiency).
+:: EQ is single-threaded; we want an affinity mask that covers only P-cores
+:: so Windows doesn't schedule it onto a weak E-core or onto a core that a
+:: background app (e.g., Unreal Editor shader workers) is hammering.
+echo   Detecting CPU topology...
+set "PS_SCRIPT=%TEMP%\eq-detect-cpu.ps1"
+(
+echo $ErrorActionPreference = 'Stop'
+echo $cpu = Get-CimInstance Win32_Processor ^| Select-Object -First 1
+echo $name = $cpu.Name
+echo $cores = [int]$cpu.NumberOfCores
+echo $logical = [int]$cpu.NumberOfLogicalProcessors
+echo $mask = 0xFF
+echo $desc = 'default: first 8 threads'
+echo if ^($name -match '1[2-4]th Gen Intel^|Core\s*Ultra'^) {
+echo     $p = $logical - $cores
+echo     if ^($p -gt 0 -and $p -lt $cores^) {
+echo         $e = $cores - $p
+echo         $pl = $p * 2
+echo         $mask = ^([long]1 -shl [Math]::Min^($pl, 63^)^) - 1
+echo         $desc = "Intel hybrid: ${p}P + ${e}E, mask covers $pl P-core threads"
+echo     }
+echo } elseif ^($name -match 'AMD' -and $cores -gt 8^) {
+echo     $h = [int]^($logical / 2^)
+echo     $mask = ^([long]1 -shl [Math]::Min^($h, 63^)^) - 1
+echo     $desc = "AMD multi-CCD: first CCD = $h threads"
+echo } else {
+echo     $desc = "$cores cores, $logical threads"
+echo }
+echo $hex = '0x{0:X}' -f $mask
+echo Set-Content -Path $args[0] -Value $hex -NoNewline -Encoding ASCII
+echo Write-Host "  CPU: $name"
+echo Write-Host "  Topology: $cores cores, $logical threads"
+echo Write-Host "  Affinity: $hex -- $desc"
+) > "%PS_SCRIPT%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" "%METER_DIR%affinity.cfg"
+if %errorlevel% neq 0 (
+    echo   [WARNING] CPU detection failed. Using default affinity 0xFF.
+    >"%METER_DIR%affinity.cfg" echo 0xFF
+)
+del "%PS_SCRIPT%" 2>nul
+echo.
+
 echo.
 echo   Setup complete!
 echo.

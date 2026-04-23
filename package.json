@@ -1,7 +1,7 @@
 {
   "name": "p99-meter",
   "productName": "p99-meter",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "description": "In-game damage meter overlay for EverQuest Project 1999",
   "main": ".webpack/main",
   "private": true,
