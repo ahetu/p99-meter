@@ -20,6 +20,7 @@ export interface ElectronAPI {
   stopDragResize: () => void;
   showTooltip: (data: { player: any; viewMode: string; barTop: number; barBottom: number }) => void;
   hideTooltip: () => void;
+  reportToGame: (lines: string[], channelPrefix: string) => Promise<{ success: boolean; error?: string; linesSent?: number }>;
 }
 
 function singleListener<T>(channel: string, cb: (data: T) => void) {
@@ -82,6 +83,9 @@ const api: ElectronAPI = {
   },
   hideTooltip: () => {
     ipcRenderer.send('hide-tooltip');
+  },
+  reportToGame: (lines: string[], channelPrefix: string) => {
+    return ipcRenderer.invoke('report-to-game', { lines, channelPrefix });
   },
 };
 

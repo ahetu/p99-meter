@@ -67,6 +67,7 @@ let loadAllSpellData: typeof import('./spellDatabase').loadAllSpellData;
 let loadZoneMap: typeof import('./mapLoader').loadZoneMap;
 let resolveZoneShortName: typeof import('./mapLoader').resolveZoneShortName;
 let initZoneFileCache: typeof import('./mapLoader').initZoneFileCache;
+let reportToGameFn: typeof import('./sendToEQ').reportToGame;
 try {
   LogWatcher = require('./logWatcher').LogWatcher;
   extractCharacterName = require('./logParser').extractCharacterName;
@@ -74,7 +75,8 @@ try {
   loadZoneMap = require('./mapLoader').loadZoneMap;
   resolveZoneShortName = require('./mapLoader').resolveZoneShortName;
   initZoneFileCache = require('./mapLoader').initZoneFileCache;
-  logInfo('Local modules loaded (logWatcher, logParser, spellDatabase, mapLoader)');
+  reportToGameFn = require('./sendToEQ').reportToGame;
+  logInfo('Local modules loaded (logWatcher, logParser, spellDatabase, mapLoader, sendToEQ)');
 } catch (err: any) {
   logError('FATAL: Failed to load local modules', { message: err.message, stack: err.stack });
   process.exit(1);
@@ -1211,6 +1213,12 @@ ipcMain.on('hide-tooltip', () => {
   if (!tooltipWindow || tooltipWindow.isDestroyed()) return;
   tooltipWindow.webContents.send('tooltip-hide');
   tooltipWindow.hide();
+});
+
+// ── IPC: Report to game (SendInput → EQ chat) ──
+ipcMain.handle('report-to-game', async (_, data: { lines: string[]; channelPrefix: string }) => {
+  logInfo('report-to-game requested', { lines: data.lines.length, prefix: data.channelPrefix || '(none)' });
+  return reportToGameFn(data.lines, data.channelPrefix);
 });
 
 // ── IPC: Class DB persistence ──

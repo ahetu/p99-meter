@@ -1,7 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { DisplayPlayer, ViewMode } from './useCombatTracker';
 import { ClassIcon } from './classIcons';
 import { fmt, FONT_NUM } from './TooltipContent';
+import { Map, Megaphone, ClipboardList, Check } from 'lucide-react';
 
 function fmtDur(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -82,6 +83,11 @@ export default function DamageMeter(props: Props) {
   const [hoveredName, setHoveredName] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null);
   const [copied, setCopied] = useState(false);
+  const [reportMenu, setReportMenu] = useState(false);
+  const [channelPrefix, setChannelPrefix] = useState('/g');
+  const [reportStatus, setReportStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [reportError, setReportError] = useState('');
+  const prefixInputRef = useRef<HTMLInputElement>(null);
 
   const onBarEnter = useCallback((e: React.MouseEvent, p: DisplayPlayer) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -102,20 +108,62 @@ export default function DamageMeter(props: Props) {
 
   const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
 
+  const modeLabel = viewMode === 'damage' ? 'Damage Done'
+    : viewMode === 'healing' ? 'Healing Done'
+    : 'Damage Taken';
+
   const copyToClipboard = useCallback(() => {
     if (players.length === 0) return;
     const dur = duration > 0 ? fmtDur(duration) : '0:00';
-    const modeTag = viewMode === 'damage' ? 'DMG'
-      : viewMode === 'healing' ? 'HPS' : 'DTPS';
     const lines = players.slice(0, 10).map((p, i) =>
-      `${i + 1}. ${p.name}${p.classShort ? ' [' + p.classShort + ']' : ''} - ${fmt(p.value)} (${p.dps}) ${p.pct.toFixed(1)}%`
+      `${i + 1}. ${p.name}${p.classShort ? ' [' + p.classShort + ']' : ''} - ${fmt(p.value)} (${p.dps} dps) ${p.pct.toFixed(1)}%`
     );
-    const text = `p99-meter ${modeTag} (${dur}) | Total: ${fmt(props.totalValue)}\n${lines.join('\n')}`;
+    const text = `${modeLabel} (${dur}) | Total: ${fmt(props.totalValue)}\n${lines.join('\n')}`;
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
-  }, [players, duration, viewMode, props.totalValue]);
+  }, [players, duration, modeLabel, props.totalValue]);
+
+  useEffect(() => {
+    if (reportMenu && prefixInputRef.current) {
+      prefixInputRef.current.focus();
+      prefixInputRef.current.select();
+    }
+  }, [reportMenu]);
+
+  const buildReportLines = useCallback((): string[] => {
+    if (players.length === 0) return [];
+    const dur = duration > 0 ? fmtDur(duration) : '0:00';
+    const header = `${modeLabel} (${dur}) | Total: ${fmt(props.totalValue)}`;
+    const rows = players.slice(0, 5).map((p, i) =>
+      `${i + 1}. ${p.name}${p.classShort ? ' [' + p.classShort + ']' : ''} - ${fmt(p.value)} (${p.dps} dps) ${p.pct.toFixed(1)}%`
+    );
+    return [header, ...rows];
+  }, [players, duration, modeLabel, props.totalValue]);
+
+  const doReport = useCallback(async () => {
+    const lines = buildReportLines();
+    if (lines.length === 0) return;
+    setReportStatus('sending');
+    setReportError('');
+    try {
+      const result = await window.electronAPI.reportToGame(lines, channelPrefix.trim());
+      if (result.success) {
+        setReportStatus('sent');
+        setTimeout(() => {
+          setReportStatus('idle');
+          setReportMenu(false);
+        }, 1500);
+      } else {
+        setReportStatus('error');
+        setReportError(result.error || 'Unknown error');
+      }
+    } catch (err: any) {
+      setReportStatus('error');
+      setReportError(err.message || 'IPC error');
+    }
+  }, [buildReportLines, channelPrefix]);
 
   // Build the list of players the pet can be assigned to
   const ctxOwnerOptions = ctxMenu ? (() => {
@@ -128,10 +176,6 @@ export default function DamageMeter(props: Props) {
     }
     return { suggested: [...suggested], others };
   })() : { suggested: [], others: [] };
-
-  const modeLabel = viewMode === 'damage' ? 'Damage Done'
-    : viewMode === 'healing' ? 'Healing Done'
-    : 'Damage Taken';
 
   return (
     <>
@@ -213,34 +257,54 @@ export default function DamageMeter(props: Props) {
             onClick={onToggleMap}
             title={mapVisible ? 'Hide map' : 'Show map'}
             style={{
-              background: mapVisible ? 'rgba(61,235,52,0.12)' : 'none',
+              background: mapVisible ? 'rgba(61,235,52,0.08)' : 'none',
               border: 'none',
               cursor: 'pointer',
-              color: mapVisible ? '#3deb34' : '#666',
-              fontSize: 12,
               padding: '0 3px',
               transition: 'color 0.2s',
               flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              color: mapVisible ? '#3deb34' : '#666',
             }}
-          >⊞</button>
+          ><Map size={13} strokeWidth={2} /></button>
         )}
 
-        {players.length > 0 && (
-          <button
-            onClick={copyToClipboard}
-            title="Copy results to clipboard"
-            style={{
-              background: copied ? 'rgba(0,204,0,0.15)' : 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: copied ? '#4ade80' : '#666',
-              fontSize: 13,
-              padding: '0 3px',
-              transition: 'color 0.2s',
-              flexShrink: 0,
-            }}
-          >{copied ? '✓' : '📋'}</button>
-        )}
+        <button
+          onClick={() => { if (players.length > 0) { setReportMenu(m => !m); setReportStatus('idle'); setReportError(''); } }}
+          disabled={players.length === 0}
+          title="Report results to EQ chat"
+          style={{
+            background: reportStatus === 'sent' ? 'rgba(0,204,0,0.15)' : reportMenu ? 'rgba(255,255,255,0.08)' : 'none',
+            border: 'none',
+            cursor: players.length === 0 ? 'default' : 'pointer',
+            padding: '0 3px',
+            transition: 'color 0.2s',
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            color: players.length === 0 ? '#666' : reportStatus === 'sent' ? '#4ade80' : reportMenu ? '#e8a830' : '#e0a030',
+            opacity: players.length === 0 ? 0.7 : 1,
+          }}
+        ><Megaphone size={13} strokeWidth={2} /></button>
+
+        <button
+          onClick={copyToClipboard}
+          disabled={players.length === 0}
+          title="Copy results to clipboard"
+          style={{
+            background: copied ? 'rgba(0,204,0,0.15)' : 'none',
+            border: 'none',
+            cursor: players.length === 0 ? 'default' : 'pointer',
+            padding: '0 3px',
+            transition: 'color 0.2s',
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            color: players.length === 0 ? '#666' : copied ? '#4ade80' : '#6ab0e8',
+            opacity: players.length === 0 ? 0.7 : 1,
+          }}
+        >{copied ? <Check size={13} strokeWidth={2.5} /> : <ClipboardList size={13} strokeWidth={2} />}</button>
       </div>
 
       {/* ═══ Bars list ═══ */}
@@ -441,6 +505,112 @@ export default function DamageMeter(props: Props) {
       </div>
 
     </div>
+
+      {/* ═══ Report-to-game channel picker ═══ */}
+      {reportMenu && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 199 }}
+            onClick={() => { if (reportStatus !== 'sending') setReportMenu(false); }}
+          />
+          <div style={{
+            position: 'fixed',
+            right: 4,
+            top: 28,
+            background: 'rgba(28,28,32,0.98)',
+            border: '1px solid #555',
+            borderRadius: 4,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.9)',
+            width: 200,
+            zIndex: 200,
+            fontFamily: FONT_BAR,
+            fontSize: 12,
+            padding: '8px 10px',
+          }}>
+            <div style={{ color: '#aaa', fontSize: 11, marginBottom: 6, fontWeight: 600 }}>
+              Report to EQ Chat
+            </div>
+
+            <div style={{ color: '#888', fontSize: 10, marginBottom: 3 }}>Channel prefix</div>
+            <input
+              ref={prefixInputRef}
+              type="text"
+              value={channelPrefix}
+              onChange={e => setChannelPrefix(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && reportStatus !== 'sending') doReport(); }}
+              placeholder="/g, /gu, /t name"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                background: 'rgba(0,0,0,0.4)',
+                border: '1px solid #555',
+                borderRadius: 3,
+                color: '#fff',
+                fontSize: 12,
+                fontFamily: FONT_BAR,
+                padding: '4px 6px',
+                outline: 'none',
+                marginBottom: 6,
+              }}
+            />
+
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+              {['/g', '/gu', '/say', '/shout', '/auc'].map(ch => (
+                <button
+                  key={ch}
+                  onClick={() => setChannelPrefix(ch)}
+                  style={{
+                    background: channelPrefix === ch ? 'rgba(255,209,0,0.15)' : 'rgba(255,255,255,0.05)',
+                    border: channelPrefix === ch ? '1px solid rgba(255,209,0,0.35)' : '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 3,
+                    color: channelPrefix === ch ? '#ffd100' : '#aaa',
+                    fontSize: 11,
+                    fontFamily: FONT_BAR,
+                    padding: '2px 7px',
+                    cursor: 'pointer',
+                  }}
+                >{ch}</button>
+              ))}
+            </div>
+
+            <button
+              onClick={doReport}
+              disabled={reportStatus === 'sending'}
+              style={{
+                width: '100%',
+                background: reportStatus === 'sent' ? 'rgba(0,204,0,0.2)'
+                  : reportStatus === 'error' ? 'rgba(255,50,50,0.15)'
+                  : 'rgba(255,209,0,0.12)',
+                border: reportStatus === 'sent' ? '1px solid rgba(0,204,0,0.4)'
+                  : reportStatus === 'error' ? '1px solid rgba(255,50,50,0.3)'
+                  : '1px solid rgba(255,209,0,0.25)',
+                borderRadius: 3,
+                color: reportStatus === 'sent' ? '#4ade80'
+                  : reportStatus === 'error' ? '#ff6b6b'
+                  : reportStatus === 'sending' ? '#888'
+                  : '#ffd100',
+                fontSize: 12,
+                fontFamily: FONT_BAR,
+                fontWeight: 700,
+                padding: '5px 0',
+                cursor: reportStatus === 'sending' ? 'wait' : 'pointer',
+                letterSpacing: 0.3,
+              }}
+            >
+              {reportStatus === 'sending' ? 'Sending...'
+                : reportStatus === 'sent' ? '✓ Sent!'
+                : reportStatus === 'error' ? 'Failed'
+                : 'Send to EQ'}
+            </button>
+
+            {reportStatus === 'error' && reportError && (
+              <div style={{ color: '#ff6b6b', fontSize: 10, marginTop: 4, lineHeight: 1.3 }}>
+                {reportError}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* ═══ Context menu for pet owner assignment ═══ */}
       {ctxMenu && (

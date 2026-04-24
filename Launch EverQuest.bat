@@ -1,6 +1,16 @@
 @echo off
 title P99 Damage Meter
 
+:: Self-elevate to admin so EQ and the meter both run elevated.
+:: EQ requires admin, and the meter needs to match EQ's privilege level
+:: to send input (report to chat, Ctrl+V, etc).
+:: One UAC prompt here covers everything.
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process '%~f0' -Verb RunAs"
+    exit /b
+)
+
 :: Resolve paths relative to this batch file (inside the p99-meter folder)
 set "METER_DIR=%~dp0"
 for %%i in ("%~dp0..") do set "EQ_DIR=%%~fi"

@@ -14,5 +14,6 @@ export const mainConfig: Configuration = {
   },
   externals: {
     'electron-overlay-window': 'commonjs2 electron-overlay-window',
+    'koffi': 'commonjs2 koffi',
   },
 };

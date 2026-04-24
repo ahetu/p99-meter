@@ -33,7 +33,7 @@ const config: ForgeConfig = {
   hooks: {
     packageAfterCopy: async (_config, buildPath) => {
       // Copy externalized native modules into the packaged app's node_modules
-      const nativeModules = ['electron-overlay-window'];
+      const nativeModules = ['electron-overlay-window', 'koffi'];
       const srcNodeModules = path.resolve(__dirname, 'node_modules');
       const destNodeModules = path.join(buildPath, 'node_modules');
 
