@@ -336,7 +336,8 @@ export default function MapOverlay({ mapData, zoneName, playerLoc, prevPlayerLoc
       ? mapData.floors[selectedFloorIdx] ?? null : null;
 
     const getAlpha = (z: number): number => {
-      if (!hasPlayerZ && zMode !== 'floors') return 0.85;
+      if (zMode === 'flat') return 1;
+      if (!hasPlayerZ) return 0.85;
       if (zMode === 'floors' && !showAllFloors) return zOpacityFloor(z, activeFloor);
       if (zMode === 'window') return zOpacityWindow(z, playerZ, zWindowHalf);
       return zOpacityDefault(z, playerZ);
