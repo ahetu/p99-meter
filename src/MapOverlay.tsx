@@ -500,15 +500,24 @@ export default function MapOverlay({ mapData, zoneName, playerLoc, prevPlayerLoc
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
     const effectiveMin = Math.min(HARDCODED_MIN_ZOOM, fitZoomRef.current);
     const newZoom = Math.min(MAX_ZOOM, Math.max(effectiveMin, zoom * factor));
-    const mouseX = e.nativeEvent.offsetX;
-    const mouseY = e.nativeEvent.offsetY;
-    setPan(prev => ({
-      x: mouseX - (mouseX - prev.x) * (newZoom / zoom),
-      y: mouseY - (mouseY - prev.y) * (newZoom / zoom),
-    }));
+
+    if (centerOnPlayer && playerLoc) {
+      const mapX = -playerLoc.y;
+      const mapY = -playerLoc.x;
+      setPan({
+        x: containerSize.w / 2 - mapX * newZoom,
+        y: containerSize.h / 2 - mapY * newZoom,
+      });
+    } else {
+      const mouseX = e.nativeEvent.offsetX;
+      const mouseY = e.nativeEvent.offsetY;
+      setPan(prev => ({
+        x: mouseX - (mouseX - prev.x) * (newZoom / zoom),
+        y: mouseY - (mouseY - prev.y) * (newZoom / zoom),
+      }));
+    }
     setZoom(newZoom);
-    if (centerOnPlayer) setCenterOnPlayer(false);
-  }, [zoom, centerOnPlayer]);
+  }, [zoom, centerOnPlayer, playerLoc, containerSize]);
 
   // Pan via any mouse button drag on canvas
   const onCanvasMouseDown = useCallback((e: React.MouseEvent) => {

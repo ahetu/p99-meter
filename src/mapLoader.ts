@@ -82,10 +82,12 @@ const ZONE_NAME_MAP: Record<string, string> = {
   'Butcherblock Mountains': 'butcher',
   'Steamfont Mountains': 'steamfont',
   'Ak\'Anon': 'akanon',
+  'AkAnon': 'akanon',
   'Crushbone': 'crushbone',
   'Castle Mistmoore': 'mistmoore',
   'Unrest': 'unrest',
   'Dagnor\'s Cauldron': 'cauldron',
+  'Dagnors Cauldron': 'cauldron',
   'Estate of Unrest': 'unrest',
   'Kithicor Forest': 'kithicor',
   'Highpass Hold': 'highpass',
@@ -96,7 +98,9 @@ const ZONE_NAME_MAP: Record<string, string> = {
   'Lavastorm Mountains': 'lavastorm',
   'Najena': 'najena',
   'Solusek\'s Eye': 'soldunga',
+  'Soluseks Eye': 'soldunga',
   'Nagafen\'s Lair': 'soldungb',
+  'Nagafens Lair': 'soldungb',
   'Temple of Solusek Ro': 'soltemple',
   'Neriak Foreign Quarter': 'neriaka',
   'Neriak Commons': 'neriakb',
@@ -116,6 +120,7 @@ const ZONE_NAME_MAP: Record<string, string> = {
   'Erudin': 'erudnext',
   'Erudin Palace': 'erudnint',
   'Erud\'s Crossing': 'erudsxing',
+  'Eruds Crossing': 'erudsxing',
   'Toxxulia Forest': 'tox',
   'Stonebrunt Mountains': 'stonebrunt',
   'The Warrens': 'warrens',
@@ -163,6 +168,7 @@ const ZONE_NAME_MAP: Record<string, string> = {
   'Frontier Mountains': 'frontiermtns',
   'Kaesora': 'kaesora',
   'Karnor\'s Castle': 'karnor',
+  'Karnors Castle': 'karnor',
   'Lake of Ill Omen': 'lakeofillomen',
   'Mines of Nurga': 'nurga',
   'The Overthere': 'overthere',
@@ -171,7 +177,9 @@ const ZONE_NAME_MAP: Record<string, string> = {
   'Swamp of No Hope': 'swampofnohope',
   'Timorous Deep': 'timorous',
   'Trakanon\'s Teeth': 'trakanon',
+  'Trakanons Teeth': 'trakanon',
   'Veeshan\'s Peak': 'veeshan',
+  'Veeshans Peak': 'veeshan',
   'The Wakening Land': 'wakening',
   'Warsliks Wood': 'warslikswood',
   'Dalnir': 'dalnir',
@@ -188,12 +196,15 @@ const ZONE_NAME_MAP: Record<string, string> = {
   'Plane of Mischief': 'mischiefplane',
   'Dragon Necropolis': 'necropolis',
   'Siren\'s Grotto': 'sirens',
+  'Sirens Grotto': 'sirens',
   'Skyshrine': 'skyshrine',
   'Sleeper\'s Tomb': 'sleeper',
+  'Sleepers Tomb': 'sleeper',
   'Temple of Veeshan': 'templeveeshan',
   'Thurgadin': 'thurgadina',
   'Icewell Keep': 'thurgadinb',
   'Velketor\'s Labyrinth': 'velketor',
+  'Velketors Labyrinth': 'velketor',
   'Western Wastes': 'westwastes',
 };
 
@@ -206,10 +217,12 @@ export function initZoneFileCache(appRoot: string) {
 
 /** Resolve a display zone name (from "You have entered X." or /who summary) to a map file short name. */
 export function resolveZoneShortName(displayName: string): string {
-  const normalized = displayName.replace(/^The /i, '');
+  // EQ log files use backticks instead of apostrophes in zone names
+  const canonical = displayName.replace(/`/g, "'");
+  const normalized = canonical.replace(/^The /i, '');
 
   // Direct lookup (try both original and stripped-The forms)
-  if (ZONE_NAME_MAP[displayName]) return ZONE_NAME_MAP[displayName];
+  if (ZONE_NAME_MAP[canonical]) return ZONE_NAME_MAP[canonical];
   if (ZONE_NAME_MAP[normalized]) return ZONE_NAME_MAP[normalized];
 
   // Try case-insensitive
