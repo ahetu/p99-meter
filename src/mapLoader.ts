@@ -247,7 +247,7 @@ export function resolveZoneShortName(displayName: string): string {
       if (stripped.startsWith(zone) || zone.startsWith(stripped)) {
         const overlap = Math.min(stripped.length, zone.length);
         const longer = Math.max(stripped.length, zone.length);
-        if (overlap / longer >= 0.6 && zone.length > bestLen) {
+        if (overlap / longer >= 0.5 && zone.length > bestLen) {
           bestMatch = zone;
           bestLen = zone.length;
         }
