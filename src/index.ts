@@ -732,6 +732,7 @@ function findLastZoneInLog(logFilePath: string): string | null {
   try {
     const stat = fs.statSync(logFilePath);
     const zoneEntryRe = /\] You have entered (.+?)\./g;
+    const pvpAreaRe = /Arena \(PvP\)|PvP area/i;
     const whoZoneRe = /\] There (?:are|is) \d+ players? in (.+?)\./g;
     let scanSize = 2 * 1024 * 1024;
     const maxScan = 32 * 1024 * 1024;
@@ -751,8 +752,10 @@ function findLastZoneInLog(logFilePath: string): string | null {
       let m: RegExpExecArray | null;
 
       while ((m = zoneEntryRe.exec(text)) !== null) {
-        lastMatch = m[1];
-        lastIndex = m.index;
+        if (!pvpAreaRe.test(m[1])) {
+          lastMatch = m[1];
+          lastIndex = m.index;
+        }
       }
       while ((m = whoZoneRe.exec(text)) !== null) {
         if (m[1] !== 'EverQuest' && m.index > lastIndex) {

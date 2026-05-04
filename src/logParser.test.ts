@@ -234,6 +234,14 @@ describe('logParser — zone change', () => {
     const ev = parse('LOADING, PLEASE WAIT...');
     expect(ev!.type).toBe('loading_screen');
   });
+
+  it('ignores PvP arena area entry', () => {
+    expect(parse('You have entered an Arena (PvP) Area.')).toBeNull();
+  });
+
+  it('ignores PvP area variations', () => {
+    expect(parse('You have entered a PvP area.')).toBeNull();
+  });
 });
 
 describe('logParser — charm', () => {

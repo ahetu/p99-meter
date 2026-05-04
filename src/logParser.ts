@@ -86,6 +86,7 @@ const YOU_GROUP_JOIN_RE = /^You have joined the group\.$/;
 const YOU_GROUP_LEAVE_RE = /^You have left the group\.$/;
 const GROUP_CHAT_RE = /^(.+?) tells the group, '.*'$/;
 const ZONE_RE = /^You have entered (.+?)\.$/;
+const PVP_AREA_RE = /Arena \(PvP\)|PvP area/i;
 const WHO_ZONE_RE = /^There (?:are|is) \d+ players? in (.+?)\.$/;
 const LOGIN_RE = /^Welcome to EverQuest!$/;
 const LOADING_RE = /^LOADING, PLEASE WAIT\.\.\.$/;
@@ -279,9 +280,9 @@ export function parseLine(line: string): CombatEvent | null {
     location: { x: parseFloat(m[1]), y: parseFloat(m[2]), z: parseFloat(m[3]) },
   };
 
-  // Zone change
+  // Zone change (skip PvP area announcements like "You have entered an Arena (PvP) Area.")
   m = ZONE_RE.exec(msg);
-  if (m) return { timestamp, type: 'zone_change', source: 'You', target: m[1], amount: 0, skill: '' };
+  if (m && !PVP_AREA_RE.test(m[1])) return { timestamp, type: 'zone_change', source: 'You', target: m[1], amount: 0, skill: '' };
 
   // /who zone summary — "There are 33 players in The Plane of Hate."
   m = WHO_ZONE_RE.exec(msg);
